@@ -205,6 +205,12 @@ curl -s -X POST $BASE/api/jobs/$JOB_ID/hi/chunks/0/segments/$SEG_ID/undo
 
 An edit returns `{"ok":true,"version":N,"segment":{...}}`; the chunk is re-synthesised and `version` changes when its media does. Health is at `GET /health`. The interactive OpenAPI docs are served by FastAPI at `/docs`.
 
+## Hosted API notes
+
+- **Rate limits.** The hosted Bodhan TTS answers HTTP 429 with `Retry-After` after roughly 8 requests a minute on the default key tier. SunwAI gates hosted calls per service across all processes (`BODHAN_API_RPM_ASR` 60, `BODHAN_API_RPM_MT` 100, `BODHAN_API_RPM_TTS` 8; at most 8 calls in flight per service, `BODHAN_API_MAX_INFLIGHT`), honours `Retry-After` on 429 and 503, and gives 429s their own retry budget (`DUB_429_RETRIES`, default 5). On a default-tier key, jobs therefore get slower rather than fail; raise the limits if your key allows more. A wait that cannot fit the retry deadline fails fast. A bare HTTP 500 from the hosted API is retried once.
+- **TTS audio.** The hosted TTS labels its reply `audio/mpeg`. SunwAI checks the bytes: WAV passes through, anything else is converted to 24 kHz mono PCM16 WAV with ffmpeg (api mode only).
+- **LLM via OpenRouter.** `LLM_PROVIDER=openrouter` was verified end to end against the live service. The model id `google/gemini-3.5-flash-lite` resolves, tool calls behave as with Gemini, and a call costs about $0.0001 to $0.0006.
+
 ## Running
 
 ```bash
