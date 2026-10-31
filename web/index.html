@@ -1,0 +1,169 @@
+<!doctype html><html lang=en><head>
+<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dub Studio</title>
+<meta name=color-scheme content="light dark">
+<script>try{var t=localStorage.getItem('dub-theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t)}catch(e){document.documentElement.setAttribute('data-theme','dark')}</script>
+<script>(function(){try{var d=document.documentElement,rm=matchMedia('(prefers-reduced-motion: reduce)').matches,seen=false;try{seen=sessionStorage.getItem('dub-pl')==='1'}catch(e){}if((navigator.webdriver&&!window.__FORCE_PL)||seen||/^#job=/.test(location.hash)||/[?&]nopl\b/.test(location.search))return;d.classList.add('pl-on');if(!rm)d.classList.add('pl-hold')}catch(e){}})()</script>
+<link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
+<link rel=stylesheet href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=Manrope:wght@400..800&family=Noto+Sans+Devanagari:wght@400;600&family=Noto+Sans+Tamil:wght@400;600&family=Noto+Sans+Bengali:wght@400;600&family=Noto+Sans+Telugu:wght@400;600&family=Noto+Sans+Kannada:wght@400;600&family=Noto+Sans+Gujarati:wght@400;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap">
+<link rel="stylesheet" href="/static/styles.css"></head>
+<body data-view=landing>
+<div id=dubpl aria-hidden=true><i class=plL></i><i class=plR></i><i class=plburst></i><div class=plc><div class=plring><svg viewBox="0 0 120 120"><circle class=t cx=60 cy=60 r=54 /><circle class=s cx=60 cy=60 r=54 pathLength=100 /></svg><div class=plg><span style="--k:0" lang=hi>अ</span><span style="--k:1" lang=ta>அ</span><span style="--k:2" lang=bn>অ</span><span style="--k:3" lang=te>అ</span><span style="--k:4" lang=kn>ಅ</span><span style="--k:5" lang=gu>ગ</span></div></div><div class=plwm><i style="--k:0">D</i><i style="--k:1">u</i><i style="--k:2">b</i><i style="--k:3">S</i><i style="--k:4">t</i><i style="--k:5">u</i><i style="--k:6">d</i><i style="--k:7">i</i><i style="--k:8">o</i></div><div class=plwv><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i><i style="--k:3"></i><i style="--k:4"></i><i style="--k:5"></i><i style="--k:6"></i><i style="--k:7"></i><i style="--k:8"></i><i style="--k:9"></i><i style="--k:10"></i><i style="--k:11"></i><i style="--k:12"></i><i style="--k:13"></i></div></div></div>
+<a class=skip href="#main">Skip to main content</a>
+<div id=tfade aria-hidden=true></div>
+<header class=top><div class=in>
+ <button class=brand id=home aria-label="Dub Studio home"><span class=back aria-hidden=true><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2 stroke-linecap=round stroke-linejoin=round><path d="M15 5l-7 7 7 7"/></svg></span><span class=logo aria-hidden=true><svg width=16 height=16 viewBox="0 0 24 24" fill=none stroke="currentColor" stroke-width=2.4 stroke-linecap=round><path d="M4 10v4M8 6v12M12 9v6M16 4v16M20 10v4"/></svg></span><span><b><span class=bl>Dub Studio</span><span class=bs hidden>Dub Studio</span></b><small>GenAI · IIT Madras</small></span></button>
+ <span id=hdtitle aria-hidden=true></span>
+ <span class=sp></span>
+ <button class="ib" id=morebtn aria-label="More" aria-expanded=false><svg class=i viewBox="0 0 24 24" fill=currentColor aria-hidden=true><circle cx=5 cy=12 r=2 /><circle cx=12 cy=12 r=2 /><circle cx=19 cy=12 r=2 /></svg></button>
+ <span class=hmore id=hmore>
+ <button class=ib id=chatbtn aria-label="Assistant (Ctrl+K)" title="Assistant (Ctrl+K)" hidden><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round stroke-linejoin=round aria-hidden=true><path d="M4 5h16v11H9l-5 4z"/></svg></button><button class=ib id=helpbtn aria-label="Help" title="Help (?)"><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round stroke-linejoin=round aria-hidden=true><circle cx=12 cy=12 r=9.25 /><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.4M12 17h.01"/></svg></button>
+ <button class=ib id=themebtn aria-label="Use light theme" title="Theme"><svg id=themeic width=22 height=22 viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round aria-hidden=true><circle cx=12 cy=12 r=4.5 /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+ <button id=newbtn hidden>+ <span class=t>New dub</span></button>
+ </span>
+</div></header>
+<main id=main tabindex=-1>
+<div id=banner role=status hidden><span class=bt><b id=bt1></b><span id=bt2></span></span><span id=bact></span><span id=islev aria-hidden=true></span></div>
+
+<section id=landing class=landing aria-labelledby=h1>
+ <div class=hero>
+  <div class=hbg aria-hidden=true></div>
+  <video id=herov muted playsinline loop preload=none aria-hidden=true tabindex=-1></video>
+  <div class=hscrim aria-hidden=true></div>
+  <div id=amb aria-hidden=true data-run="0"><i class="lk lk1"></i><i class="lk lk2"></i><canvas id=ambc></canvas><i class=grain></i></div>
+  <div class=hin>
+   <div class=kicker>GenAI · IIT Madras</div>
+   <h1 id=h1><span class=w style="--i:0">Any</span> <span class=w style="--i:1">video.</span> <span class=w style="--i:2"><em>Every</em></span> <span class=w style="--i:3"><em>language.</em></span></h1>
+   <p class=lede>Dub a YouTube video into Indian languages with lip-matched voices, then switch the audio language while it plays.</p>
+   <div class=hbtns><button type=button class=btn id=heroplay><svg width=20 height=20 viewBox="0 0 24 24" fill=currentColor aria-hidden=true><path d="M8 5v14l12-7z"/></svg>Play a demo</button></div>
+ <form class=cmd id=form novalidate aria-label="Dub a YouTube link">
+  <div class=cmdbar><svg class=yt viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linejoin=round aria-hidden=true><rect x=2.5 y=5.5 width=19 height=13 rx=4 /><path d="M10 9l5 3-5 3z" fill=currentColor stroke=none /></svg><label class=vh for=url>YouTube link</label><input id=url type=url inputmode=url autocomplete=url placeholder="Paste a YouTube link to dub it" aria-describedby="urlh urle"><label class="ck lipck" title="On: the speakers' lips are re-rendered to match the dubbed speech (slower). Off: keep the original picture with the aligned dubbed audio (faster, no lip render)."><input type=checkbox id=lipopt checked><span>Lip sync</span></label><button class=btn type=submit id=dub disabled>Dub it &rarr;</button><span class=dubcap id=dubcap aria-hidden=true></span></div><div id=dubnote hidden>Paste a YouTube link first.</div>
+  <div class=cmdopts>
+   <div class=fld><label class=vh id=pl>Dub into</label>
+    <button type=button id=pickbtn aria-expanded=false aria-controls=pickpanel aria-labelledby="pl pickbtn"><span id=picktxt>Choose up to 3 languages</span><span class=sub id=pickn>0 of 3 selected</span></button>
+    <div id=pickpanel hidden>
+     <label class=vh for=psearch>Search languages</label><input id=psearch type=text placeholder="Search by language or script" autocomplete=off>
+     <div class=help id=pickhelp aria-live=polite></div>
+     <div class=lst id=picklist role=group aria-label="Languages"></div><div style="display:flex;justify-content:flex-end;margin-top:8px"><button type=button id=pickdone class=btn>Done</button></div>
+    </div>
+    <div class=err id=lange hidden></div></div>
+   <fieldset class=fld><legend class=vh>Range</legend>
+    <div class=clip><div class=seg2 role=radiogroup><label><input type=radio name=rng value=whole checked><span>Entire video</span></label><label><input type=radio name=rng value=clip><span>Clip</span></label></div>
+    <div class=clip id=clip hidden><label class=lab2 for=start>Start</label><input id=start type=text inputmode=numeric placeholder="0:00" autocomplete=off><label class=lab2 for=end>End</label><input id=end type=text inputmode=numeric placeholder="0:00" autocomplete=off><div class=help>Use mm:ss, hh:mm:ss, or seconds. <span id=cliplen></span></div></div></div>
+    <div class=err id=rnge hidden></div>
+   </fieldset>
+   <div class=fld><label class=ck><input type=checkbox id=consent aria-describedby="conh conse"><span>I have the rights</span></label><div class=err id=conse hidden></div></div><span class=info title="Only process videos you own or have permission to use. The demos below are used under their source licences." tabindex=0 aria-describedby=conh><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round aria-hidden=true><circle cx=12 cy=12 r=9 /><path d="M12 11v6M12 7.5v.5"/></svg></span>
+  </div>
+  <div class=help id=urlh>Public or unlisted videos you own or have permission to use.<span id=conh> The demos below are used under their source licences.</span></div>
+  <div class=err id=urle hidden></div>
+  <div class=err id=formmsg role=alert hidden></div>
+ </form>
+  </div>
+ </div>
+ <div class=row><div class=rowh><h2>Watch a demo</h2><p>Already dubbed, so they open instantly. Switch the language while they play.</p></div>
+  <div class=demos id=demos>
+   <button class=demo style="--i:0" data-demo=0 data-pv="69da10751a5e"><span class=pbg aria-hidden=true></span><video class=pv muted playsinline loop preload=none aria-hidden=true tabindex=-1></video><span class=ps aria-hidden=true></span><span class=play aria-hidden=true><svg width=18 height=18 viewBox="0 0 24 24" fill=currentColor><path d="M8 5v14l12-7z"/></svg></span><span class=rd>Open demo</span><span class=pin><span class=th>EN &rarr; HI · TA · BN</span><b>Talking heads</b><span class=meta>3 min · Hindi, Tamil, Bengali · Lips matched</span><span class=desc>Three voices, dubbed separately and lip-matched.</span></span></button>
+   <button class=demo style="--i:1" data-demo=1 data-pv="ee9df6c63940"><span class=pbg aria-hidden=true></span><video class=pv muted playsinline loop preload=none aria-hidden=true tabindex=-1></video><span class=ps aria-hidden=true></span><span class=play aria-hidden=true><svg width=18 height=18 viewBox="0 0 24 24" fill=currentColor><path d="M8 5v14l12-7z"/></svg></span><span class=rd>Open demo</span><span class=pin><span class=th>EN &rarr; HI · TA · BN</span><b>No faces</b><span class=meta>Full video · Hindi, Tamil, Bengali</span><span class=desc>NASA narration dubbed with the music and ambience kept.</span></span></button>
+   <button class=demo style="--i:2" data-demo=2 data-pv="879b2e87a92a"><span class=pbg aria-hidden=true></span><video class=pv muted playsinline loop preload=none aria-hidden=true tabindex=-1></video><span class=ps aria-hidden=true></span><span class=play aria-hidden=true><svg width=18 height=18 viewBox="0 0 24 24" fill=currentColor><path d="M8 5v14l12-7z"/></svg></span><span class=rd>Open demo</span><span class=pin><span class=th>HI &rarr; EN</span><b>Hindi to English</b><span class=meta>3 min · English</span><span class=desc>A Hindi programme translated and voiced in English.</span></span></button>
+  </div>
+  <p class=err id=demoerr role=alert hidden style="margin-top:8px"></p>
+ </div>
+ <div class=about>
+  <div><h3>Watch while it dubs</h3><p>The video is split into parts. The first part plays as soon as its voice is ready; the rest fill in behind it.</p></div>
+  <div><h3>Switch languages mid-sentence</h3><p>Press L or open Audio &amp; subtitles in the player. Playback keeps its place.</p></div>
+  <div><h3>Fix a line, hear it again</h3><p>Edit any translated line in the transcript. The part is re-voiced and swapped in without moving your position.</p></div>
+ </div>
+</section>
+
+<section id=studio class="studio" hidden aria-label="Studio" data-tab=transcript>
+ <h1 class=vh>Dubbing studio</h1>
+ <div class="stage idle" id=stage>
+  <div class=stagein id=stagein>
+  <div id=idlebg aria-hidden=true></div>
+  <video id=v playsinline></video>
+  <canvas id=freeze aria-hidden=true></canvas>
+  <div class=tscrim aria-hidden=true></div>
+  <div id=cap hidden aria-live=off></div><span id=capprobe class=cl aria-hidden=true></span><span id=capsafe aria-hidden=true></span>
+  <div id=editing-tag hidden>Updating this part</div>
+  <button id=bigplay aria-label="Play"><svg viewBox="0 0 24 24" fill=currentColor aria-hidden=true><path d="M8 5v14l12-7z"/></svg></button>
+  <div id=lockup aria-hidden=true><b id=lktitle></b><span id=lkmeta></span></div>
+  <button id=ctaplay type=button hidden><svg viewBox="0 0 24 24" fill=currentColor aria-hidden=true><path d="M8 5v14l12-7z"/></svg><span id=ctatxt>Play</span></button><button id=ctaorig type=button>Play original</button>
+  <div id=feedback aria-hidden=true></div><div id=swsweep aria-hidden=true></div>
+  <div id=buffring aria-hidden=true></div><div id=buflbl aria-hidden=true></div>
+  <button id=listen type=button><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round stroke-linejoin=round aria-hidden=true><path d="M4 9.5h3.2L12 5v14l-4.8-4.5H4z"/><path d="M15.5 9.3a3.6 3.6 0 0 1 0 5.4"/></svg><span id=listentxt>Listen in Hindi</span></button>
+  <div id=hint aria-hidden=true>Press <kbd>L</kbd> to change language · <kbd>?</kbd> for shortcuts</div>
+  <div id=lchoice hidden role=group aria-live=polite></div>
+  <div class=ctlwrap>
+   <div class=ctrl id=deck>
+    <div class=seekw id=seekw><div id=segbar class=lyr aria-hidden=true></div><div id=bufd class=lyr aria-hidden=true></div><div id=ghost class=lyr aria-hidden=true></div><div id=fill class=lyr></div><input id=bar type=range min=0 max=100 value=0 step=0.1 aria-label="Seek"><div id=prev hidden></div></div>
+    <div class=brow>
+     <span class=g>
+     <button id=pp aria-label="Play"><svg class=i viewBox="0 0 24 24" fill=currentColor><path d="M8 5v14l12-7z"/></svg></button>
+     <button id=skb aria-label="Back 10 seconds" title="Back 10 s"><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round stroke-linejoin=round><path d="M4 11a8 8 0 1 0 2.4-5.7"/><path d="M4 4v5h5"/><text x=12 y=14 text-anchor=middle font-size=8 font-weight=800 fill=currentColor stroke=none font-family="Manrope,sans-serif">10</text></svg></button>
+     <button id=skf aria-label="Forward 10 seconds" title="Forward 10 s"><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round stroke-linejoin=round><path d="M20 11a8 8 0 1 1-2.4-5.7"/><path d="M20 4v5h-5"/><text x=12 y=14 text-anchor=middle font-size=8 font-weight=800 fill=currentColor stroke=none font-family="Manrope,sans-serif">10</text></svg></button>
+     </span>
+     <span class=g>
+     <span class=volg><button class="cb" id=mutebtn aria-label="Mute" title="Mute (M)"><span id=muteic aria-hidden=true></span></button><input id=vol type=range min=0 max=1 step=.05 value=1 aria-label="Volume 100%"></span>
+     <span id=tlabel>0:00 / 0:00</span>
+     </span>
+     <span class=sp></span><div id=mstat title="Audio & subtitles"></div><span class=sp></span>
+     <span class=g>
+     <button class="cb" id=lipbtn aria-pressed=true aria-label="Lip sync: on" title="Lip sync / Original video" hidden><b>Lips</b></button>
+     <button class="cb hm" id=capbtn aria-pressed=false aria-label="Show captions" title="Captions (C)"><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linejoin=round aria-hidden=true><rect x=3 y=5 width=18 height=14 rx=2.5 /><path d="M10.5 10.2a2.2 2.2 0 1 0 0 3.6M17 10.2a2.2 2.2 0 1 0 0 3.6" stroke-linecap=round/></svg></button>
+     <button class="cb" id=audbtn aria-label="Audio and subtitles" aria-expanded=false aria-controls=audpanel title="Audio & subtitles (L)"><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round stroke-linejoin=round aria-hidden=true><path d="M4 5.5h16v10.5h-7.5L8 20v-4H4z"/><path d="M7.5 9.5h9M7.5 12.5h5.5"/></svg></button>
+     <button class="cb" id=spdbtn aria-label="Playback speed 1×" title="Playback speed"><b>1×</b></button>
+     <button class="cb hm" id=fsbtn aria-label="Enter fullscreen" title="Fullscreen (F)"><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round stroke-linejoin=round aria-hidden=true><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+     </span>
+    </div>
+   </div>
+  </div>
+  <div id=ov class=ov><div><div class=spin><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i><i style="--k:3"></i><i style="--k:4"></i></div><b id=ovt></b><small id=ovs></small><div id=ova></div></div></div>
+  </div>
+  <div id=pshield aria-hidden=true></div>
+  <div id=audpanel role=dialog aria-modal=true aria-label="Audio and subtitles"><button type=button class=ib id=audclose aria-label="Close"><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round aria-hidden=true><path d="M6 6l12 12M18 6L6 18"/></svg></button><div><h3 id=audh>Audio</h3><div id=audlist role=radiogroup aria-labelledby=audh></div></div><div><h3 id=subh>Subtitles</h3><div id=sublist role=radiogroup aria-labelledby=subh></div></div><div id=audmore hidden></div></div>
+ </div>
+ <div class=studio-grid>
+  <div class=colv>
+   <div class=meta>
+    <h2 class=vt id=vtitle>Dubbing studio</h2>
+    <div class=credit id=vcredit></div>
+    <div class=langs><span class=lab>Listen in</span><div class=lwrap><div id=tracks role=group aria-label="Audio language"></div><span id=tind aria-hidden=true></span></div><span id=ctx></span></div>
+    <p class=desc2 id=vdesc></p>
+    <details class=more open><summary>Details</summary><dl id=vmore></dl></details>
+   </div>
+   <section class=panel id=partspanel aria-labelledby=ph><h2 id=ph>Parts <small id=psum>voice first, then lips matched</small></h2><div id=parts></div></section>
+  </div>
+  <div class=studio-side>
+   <div id=mtabs role=tablist aria-label="Panels"><button role=tab id=tab_transcript data-tab=transcript aria-selected=true aria-controls=transcript>Transcript</button><button role=tab id=tab_parts data-tab=parts aria-selected=false tabindex=-1 aria-controls=partspanel>Progress</button><button role=tab id=tab_quality data-tab=quality aria-selected=false tabindex=-1 aria-controls=quality>Quality</button></div>
+   <section id=transcript class=card aria-labelledby=th>
+    <div class=thead><h2 id=th>Transcript</h2><label class=vh for=tlang>Transcript language</label><select id=tlang></select><button id=follow aria-pressed=true>Following playback</button></div>
+    <div id=segs aria-live=off></div>
+   </section>
+   <section id=quality class=panel aria-labelledby=qh><div id=sync>
+    <p class=qnull><b>Null</b> means no speech was truncated and no playback speed-up was needed.</p>
+    <h2 id=qh>Sync quality</h2>
+    <p class=mut style="font-size:13px;margin-bottom:8px">How closely the dubbed speech fits the original timing.</p>
+    <div id=qsum class=qgrid></div>
+    <details class=td><summary>Technical details</summary><div class=syw><table class=syt><thead><tr><th>Language</th><th>Segments</th><th>Overflowed</th><th>Cut (s)</th><th>Refit</th><th>Tempo mean / max</th><th>Lip-sync</th></tr></thead><tbody id=syncb></tbody></table></div></details>
+   </div></section>
+  </div>
+  <div id=mbar><button id=mpp aria-label="Play"></button><span id=mtime>0:00 / 0:00</span><button id=mcc aria-pressed=false aria-label="Show captions"><b>CC</b></button><button id=mlang aria-label="Next language"><b>Language</b></button></div>
+ </div>
+</section>
+</main>
+<video id=pre preload=auto hidden></video><div id=toast role=presentation></div>
+<aside id=chat role=complementary aria-label="Assistant" aria-hidden=true><header><h2>Assistant<small>Ask for a change to a line. Press Esc to close.</small></h2><button id=chatx class=ib aria-label="Close assistant"><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round aria-hidden=true><path d="M6 6l12 12M18 6L6 18"/></svg></button></header><div id=chatlog role=log aria-live=polite aria-label="Conversation"></div><div id=chatchips role=group aria-label="Quick actions for the current line"></div><form id=chatform><label class=vh for=chatin>Message</label><textarea id=chatin rows=1 maxlength=1000 placeholder="e.g. make this line calmer"></textarea><button class=btn id=chatsend type=submit>Send</button></form></aside><div id=lpill aria-hidden=true></div>
+<div class=vh id=live-status aria-live=polite aria-atomic=true></div><div class=vh id=live-error role=alert></div>
+<dialog id=help aria-labelledby=helph><button id=helpx class=ib aria-label="Close help" style="position:absolute;top:12px;right:12px"><svg class=i viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.8 stroke-linecap=round aria-hidden=true><path d="M6 6l12 12M18 6L6 18"/></svg></button><h2 id=helph tabindex=-1>Keyboard shortcuts and playback help</h2>
+ <p class=mut style="font-size:13px">Shortcuts do not run while you are typing in a field.</p>
+ <h3>Playback</h3><table><tr><td><kbd>Space</kbd></td><td>Play / pause</td></tr><tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Back / forward 5 seconds</td></tr><tr><td><kbd>Shift</kbd>+<kbd>←</kbd> <kbd>→</kbd></td><td>Previous / next part</td></tr><tr><td><kbd>F</kbd> <kbd>M</kbd> <kbd>C</kbd></td><td>Fullscreen, mute, captions</td></tr></table>
+ <h3>Languages</h3><table><tr><td><kbd>L</kbd></td><td>Next language (opens Audio &amp; subtitles)</td></tr><tr><td><kbd>O</kbd></td><td>Original audio</td></tr></table>
+ <h3>Transcript editing</h3><table><tr><td><kbd>E</kbd></td><td>Edit the current line</td></tr><tr><td><kbd>U</kbd></td><td>Undo the current line</td></tr><tr><td><kbd>Esc</kbd></td><td>Cancel the edit</td></tr><tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Assistant (when enabled)</td></tr></table>
+ <h3>How parts become ready</h3><p class=mut style="font-size:13px">A part can play as soon as its dubbed voice is ready. The lip-matched version replaces it later without moving your position.</p>
+ <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end"><button id=helpnew hidden>Start a new dub</button><button class=btn id=helpclose>Close</button></div>
+</dialog>
+<div id=foot>Built with Indic speech and translation technology from <b>Bodhan AI / AI4Bharat</b>. <span>Indic Transcribe · Indic Translate · Indic Speak.</span></div>
+<script src="/static/js/effects.js"></script>
+<script src="/static/js/app.js"></script>
+<script src="/static/js/cinematic.js"></script>
+</body></html>
