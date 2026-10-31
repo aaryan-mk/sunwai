@@ -2,6 +2,9 @@ import io, json, os, sys, tempfile, threading, shutil
 from pathlib import Path
 import numpy as np, soundfile as sf
 from sunwai.control import expression as E
+from sunwai.control.expression.fitting import wav_duration
+from sunwai.control.expression.fsutil import sha256_file
+from sunwai.control.expression.revisions import read_revisions
 
 os.environ["EXPRESSION_ENABLED"] = "1"
 F = []
@@ -55,7 +58,7 @@ def tempo_fn(src, dst, t):
     )
 
 
-trim = lambda raw, dst: (raw, E._wav_dur(raw))
+trim = lambda raw, dst: (raw, wav_duration(raw))
 
 
 def kw(tts, **k):
@@ -94,13 +97,13 @@ except E.ExprError as e:
 # happy path + never overwrites active
 d = mk()
 h = E.head_revision(d, "hi", 1)
-before = E._sha(d / "tts" / "1.wav")
+before = sha256_file(d / "tts" / "1.wav")
 c = E.do_expression_resynth(d, "hi", 1, "angrier", 0, "k1", **kw(lambda *a: wav(1.5)))
 chk(
     "candidate ready, active untouched",
-    c["status"] == "ready" and E._sha(d / "tts" / "1.wav") == before and c["audio_path"] != str(d / "tts" / "1.wav"),
+    c["status"] == "ready" and sha256_file(d / "tts" / "1.wav") == before and c["audio_path"] != str(d / "tts" / "1.wav"),
 )
-chk("underrun padded to slot", abs(E._wav_dur(c["audio_path"]) - 2.0) < 0.01)
+chk("underrun padded to slot", abs(wav_duration(c["audio_path"]) - 2.0) < 0.01)
 # duplicate submission
 n = {"n": 0}
 
@@ -143,16 +146,16 @@ except E.ExprError as e:
 d4 = mk()
 E.head_revision(d4, "hi", 1)
 c = E.do_expression_resynth(d4, "hi", 1, "angrier", 0, "a", **kw(lambda *a: wav(1.8)))
-orig = E._sha(d4 / "tts" / "1.wav")
+orig = sha256_file(d4 / "tts" / "1.wav")
 rm = []
 rev = E.apply_candidate(
     d4, 1, c["candidate_id"], 0, lang="hi", remix=lambda: (rm.append(1), (d4 / "dub.wav").write_bytes(wav(3.2)))
 )
 chk(
     "apply: rev1, remix ran, style stored, audio changed",
-    rev["revision"] == 1 and rm and rev["style"] == "anger" and E._sha(d4 / "tts" / "1.wav") != orig,
+    rev["revision"] == 1 and rm and rev["style"] == "anger" and sha256_file(d4 / "tts" / "1.wav") != orig,
 )
-chk("apply: chunk hash recorded", rev["chunk_audio_hash"] == E._sha(d4 / "dub.wav"))
+chk("apply: chunk hash recorded", rev["chunk_audio_hash"] == sha256_file(d4 / "dub.wav"))
 try:
     E.apply_candidate(d4, 1, c["candidate_id"], 0, lang="hi", remix=lambda: None)
     chk("double apply 409", False)
@@ -161,16 +164,16 @@ except E.ExprError as e:
 u = E.undo_revision(d4, 1, 1, lang="hi", remix=lambda: (d4 / "dub.wav").write_bytes(wav(3.0)))
 chk(
     "undo: new revision 2 restoring original audio+text",
-    u["revision"] == 2 and E._sha(d4 / "tts" / "1.wav") == orig and u["style"] is None and u["restores"] == 0,
+    u["revision"] == 2 and sha256_file(d4 / "tts" / "1.wav") == orig and u["style"] is None and u["restores"] == 0,
 )
-chk("revisions append-only (3 records)", len(E._read_revs(d4, 1)) == 3)
+chk("revisions append-only (3 records)", len(read_revisions(d4, 1)) == 3)
 r3 = E.undo_revision(d4, 1, 2, lang="hi", remix=lambda: None)
 chk("undo of undo = redo", r3["revision"] == 3 and r3["style"] == "anger")
 # remix failure rolls back
 d5 = mk()
 E.head_revision(d5, "hi", 1)
 c = E.do_expression_resynth(d5, "hi", 1, "excited", 0, "z", **kw(lambda *a: wav(1.8)))
-o5 = E._sha(d5 / "tts" / "1.wav")
+o5 = sha256_file(d5 / "tts" / "1.wav")
 
 
 def boom():
@@ -183,9 +186,9 @@ except RuntimeError:
     pass
 chk(
     "remix failure restores active audio + segments + no revision",
-    E._sha(d5 / "tts" / "1.wav") == o5
+    sha256_file(d5 / "tts" / "1.wav") == o5
     and json.loads((d5 / "segments.json").read_text())[0]["style"] is None
-    and len(E._read_revs(d5, 1)) == 1,
+    and len(read_revisions(d5, 1)) == 1,
 )
 # concurrent edit: external text edit between preview and apply
 d6 = mk()
@@ -243,7 +246,7 @@ try:
 except E.ExprError as e:
     chk("superseded apply 409", e.status == 409)
 # stale lip-sync completion
-hd = E._read_revs(d4, 1)[-1]
+hd = read_revisions(d4, 1)[-1]
 chk("lipsync current accepted", E.lipsync_complete(d4, 1, hd["revision"], hd["chunk_audio_hash"]) == "accepted")
 chk("lipsync old revision stale", E.lipsync_complete(d4, 1, 1, "whatever") == "stale")
 chk("lipsync wrong chunk hash stale", E.lipsync_complete(d4, 1, hd["revision"], "deadbeef") == "stale")

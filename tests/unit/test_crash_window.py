@@ -199,10 +199,10 @@ def test_service_release_hook_wiring(tmp_path):
     from sunwai.control import service as ctl_service
     got = []
     ctl_hooks.release_language = lambda j, l, r: got.append((j, l, r))
-    ctl_service.ActionService._release_lang("jid", "ta", "boom")
+    ctl_service.ActionService.release_language("jid", "ta", "boom")
     assert got == [("jid", "ta", "boom")]
     ctl_hooks.release_language = lambda *a: (_ for _ in ()).throw(RuntimeError("x"))
-    ctl_service.ActionService._release_lang("jid", "ta", "boom")         # swallowed
+    ctl_service.ActionService.release_language("jid", "ta", "boom")         # swallowed
 
 
 def test_marker_frees_only_when_job_task_dead(tmp_path):

@@ -1,185 +1,160 @@
-"""append-only revision / action / operation / event store (per job). No server2 imports.
-Files: <job>/ctl/{revisions,actions,operations,events}.jsonl ; all writes are append + fsync; latest record wins on load."""
-import asyncio, hashlib, json, os, threading, time, uuid
-from collections import defaultdict, deque
-from datetime import datetime, timezone
+"""Append-only revision / action / operation / event store, one per job.
+
+Files: ``<job>/ctl/{revisions,actions,operations,events}.jsonl``. All writes are append plus fsync; the latest record
+for a key wins on load.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import threading
+import time
+from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
+from sunwai.control.codec import Record, canon, seg_key, sha, utcnow
+from sunwai.control.errors import CtlError
+from sunwai.control.events import EventLog
+from sunwai.control.jsonl import JsonlFile
+from sunwai.control.ratelimit import SlidingWindow
 
-EV_KEEP = int(os.environ.get("DUB_CTL_EV_KEEP", "2000"))
-EV_REPLAY = int(os.environ.get("DUB_CTL_EV_REPLAY", "200"))
-EV_MAX_BYTES = int(os.environ.get("DUB_CTL_EV_MAX_BYTES", str(4 << 20)))
+__all__ = ["CtlError", "JobStore", "canon", "seg_key", "sha", "store_for", "utcnow"]
 
-
-def utcnow():
-    return datetime.now(timezone.utc).isoformat()
-
-
-class CtlError(Exception):
-    def __init__(self, status, code, detail, **extra):
-        super().__init__(detail)
-        self.status, self.code, self.detail, self.extra = status, code, detail, extra
-
-
-def canon(obj):
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
-def sha(s):
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
-
-
-def seg_key(lang, chunk, seg):
-    return f"{lang}/{int(chunk)}/{seg}"
+ADD_LANGUAGE = "add_language"
 
 
 class JobStore:
-    def __init__(self, job_dir):
+    """Durable per-job state: segment revisions, actions, operations, events, spend and idempotency keys."""
+
+    def __init__(self, job_dir: str | Path) -> None:
+        """Open (and replay) the store under ``<job_dir>/ctl``.
+
+        Operations that were queued or running when the previous process died are failed, except add-language
+        operations still inside their deadline, which are left in :attr:`resumable` for the service to re-attach.
+        """
         self.dir = Path(job_dir) / "ctl"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
-        self.revs = defaultdict(list)       # seg_key -> [rev dict] (append order)
-        self.actions = {}                   # action_id -> record
-        self.idem = {}                      # idempotency_key -> (payload_hash, action_id)
-        self.ops = {}                       # operation_id -> latest record
-        self.events = []                    # list of event dicts (seq == index+1)
-        self.running = {}                   # seg_key/chunk key -> operation_id (in-flight, in memory)
-        self.previews = deque()             # timestamps
-        self.spend = {"usd": 0.0, "synth_s": 0.0}
-        self.resumable = []
-        self.lang_gen = {}                  # lang -> max playback_generation
-        self._ev = None
+        self.revs: defaultdict[str, list[Record]] = defaultdict(list)
+        self.actions: dict[str, Record] = {}
+        self.idem: dict[str, tuple[str, str]] = {}  # idempotency_key -> (payload_hash, action_id)
+        self.ops: dict[str, Record] = {}
+        self.running: dict[str, str] = {}  # in-flight claim key -> operation_id (memory only)
+        self.previews = SlidingWindow(60.0)
+        self.spend: dict[str, float] = {"usd": 0.0, "synth_s": 0.0}
+        self.resumable: list[Record] = []
+        self.lang_gen: dict[str, int] = {}  # lang -> highest playback generation seen
+        self._files = {name: JsonlFile(self.dir / f"{name}.jsonl") for name in ("revisions", "actions", "operations")}
+        self._events = EventLog(JsonlFile(self.dir / "events.jsonl"), self.dir.parent.name, self.lock)
         self._load()
 
-    # ---- persistence
-    def _p(self, name):
-        return self.dir / f"{name}.jsonl"
+    # ---- replay
+    def _load(self) -> None:
+        self._load_revisions()
+        for action in self._files["actions"].read_all():
+            self.actions[action["action_id"]] = action
+            if action.get("idempotency_key"):
+                self.idem[action["idempotency_key"]] = (action["payload_hash"], action["action_id"])
+        for op in self._files["operations"].read_all():
+            self.ops[op["operation_id"]] = op
+        self._recover_interrupted_ops()
+        self._load_spend()
 
-    def _append(self, name, rec):
-        line = canon(rec) + "\n"
-        with open(self._p(name), "a", encoding="utf-8") as f:
-            f.write(line); f.flush(); os.fsync(f.fileno())
+    def _load_revisions(self) -> None:
+        latest: dict[tuple[str, int], Record] = {}
+        for rev in self._files["revisions"].read_all():
+            key = seg_key(rev["lang"], rev["chunk_id"], rev["segment_id"])
+            latest[(key, rev["revision"])] = rev  # a later record for the same revision (status change) wins
+        for (key, _number), rev in sorted(latest.items(), key=lambda item: item[0]):
+            self.revs[key].append(rev)
 
-    def _read(self, name):
-        p = self._p(name)
-        if not p.exists():
-            return []
-        out = []
-        for ln in p.read_text(encoding="utf-8").splitlines():
+    def _recover_interrupted_ops(self) -> None:
+        for op in list(self.ops.values()):
+            if op.get("state") not in ("queued", "running"):
+                continue
+            is_addlang = op.get("kind") == ADD_LANGUAGE
+            if is_addlang and op.get("stage") == "preparing" and float(op.get("deadline") or 0) > time.time():
+                self.resumable.append(dict(op))
+                continue
+            failed = dict(op)
+            error = "language deadline passed while the server was down" if is_addlang else "interrupted by server restart"
+            failed.update(state="failed", stage="error", error=error)
+            self.put_op(failed)
+            self.emit("op.error", operation_id=failed["operation_id"], action_id=failed.get("action_id"), error=error)
+
+    def _load_spend(self) -> None:
+        path = self.dir / "spend.json"
+        if path.exists():
             try:
-                out.append(json.loads(ln))
-            except Exception:
-                pass                       # torn last line after a crash is ignored
-        return out
-
-    def _read_tail(self, name, n):
-        """Last n parseable lines without reading the whole file (seek from the end)."""
-        p = self._p(name)
-        if not p.exists():
-            return []
-        size = p.stat().st_size
-        with open(p, "rb") as f:
-            back = min(size, 1 << 20)
-            f.seek(size - back)
-            data = f.read()
-        lines = data.splitlines()
-        if back < size:
-            lines = lines[1:]                              # first line may be cut
-        out = []
-        for ln in lines[-n:]:
-            try:
-                out.append(json.loads(ln))
-            except Exception:
-                pass
-        return out
-
-    def _rotate_events(self):
-        p = self._p("events")
-        try:
-            if p.exists() and p.stat().st_size > EV_MAX_BYTES:
-                os.replace(p, self.dir / "events.jsonl.1")  # keep exactly one old generation; the live file restarts with the tail
-                with open(p, "w", encoding="utf-8") as f:
-                    for ev in self.events:
-                        f.write(canon(ev) + "\n")
-        except OSError:
-            pass
-
-    def _load(self):
-        latest = {}
-        for r in self._read("revisions"):
-            k = seg_key(r["lang"], r["chunk_id"], r["segment_id"])
-            latest[(k, r["revision"])] = r                  # later record for the same revision (status change) wins
-        for (k, _n), r in sorted(latest.items(), key=lambda kv: (kv[0][0], kv[0][1])):
-            self.revs[k].append(r)
-        for a in self._read("actions"):
-            self.actions[a["action_id"]] = a
-            if a.get("idempotency_key"):
-                self.idem[a["idempotency_key"]] = (a["payload_hash"], a["action_id"])
-        for o in self._read("operations"):
-            self.ops[o["operation_id"]] = o
-        self.events = self._read_tail("events", EV_KEEP)
-        self.last_seq = self.events[-1]["seq"] if self.events else 0
-        self._rotate_events()
-        # restart recovery: operations that were queued/running when the process died can never finish
-        self.resumable = []                  # add_language ops still within their deadline: re-attached by the service, NOT failed
-        for o in list(self.ops.values()):
-            if o.get("state") in ("queued", "running"):
-                if o.get("kind") == "add_language" and o.get("stage") == "preparing" and float(o.get("deadline") or 0) > time.time():
-                    self.resumable.append(dict(o)); continue
-                o = dict(o); o.update(state="failed", stage="error", error="interrupted by server restart" if o.get("kind") != "add_language" else "language deadline passed while the server was down")
-                self.put_op(o)
-                self.emit("op.error", operation_id=o["operation_id"], action_id=o.get("action_id"), error=o["error"])
-        sp = self.dir / "spend.json"
-        if sp.exists():
-            try:
-                self.spend.update(json.loads(sp.read_text()))
+                self.spend.update(json.loads(path.read_text()))
             except Exception:
                 pass
 
     # ---- revisions
-    def head(self, key):
-        """Active head = highest-numbered non-candidate, non-failed revision."""
+    def head(self, key: str) -> Record | None:
+        """Return the active head: the highest-numbered revision whose status is ``active``."""
         with self.lock:
-            for r in reversed(self.revs.get(key, [])):
-                if r.get("status") == "active":
-                    return r
+            for rev in reversed(self.revs.get(key, [])):
+                if rev.get("status") == "active":
+                    return rev
             return None
 
-    def all_revs(self, key):
+    def all_revs(self, key: str) -> list[Record]:
+        """Return a copy of every revision of a segment in append order."""
         with self.lock:
             return list(self.revs.get(key, []))
 
-    def next_no(self, key):
+    def next_no(self, key: str) -> int:
+        """Return the next free revision number of a segment."""
         with self.lock:
             return max([r["revision"] for r in self.revs.get(key, [])] + [-1]) + 1
 
-    def add_revision(self, key, rev, expect_head=None, check=False):
-        """Append a revision. With check=True the CAS must hold: current active head revision == expect_head."""
+    def add_revision(self, key: str, rev: Record, expect_head: int | None = None, check: bool = False) -> Record:
+        """Append a revision.
+
+        Args:
+            key: Segment key.
+            rev: Revision record (its number is assigned here).
+            expect_head: Revision number the active head must have when ``check`` is set.
+            check: Enforce the compare-and-swap on the head.
+
+        Raises:
+            CtlError: 409 ``stale_revision`` when the CAS fails.
+        """
         with self.lock:
-            h = self.head(key)
-            cur = h["revision"] if h else None
-            if check and cur != expect_head:
-                raise CtlError(409, "stale_revision", "segment changed since you loaded it", expected=expect_head, current=cur)
+            head = self.head(key)
+            current = head["revision"] if head else None
+            if check and current != expect_head:
+                raise CtlError(409, "stale_revision", "segment changed since you loaded it", expected=expect_head, current=current)
             rev = dict(rev)
             rev["revision"] = self.next_no(key)
-            self._append("revisions", rev)
+            self._files["revisions"].append(rev)
             self.revs[key].append(rev)
             return rev
 
-    def set_status(self, key, revno, status):
-        """Status changes are NEW appended records (same revision number, later ts); latest wins."""
+    def set_status(self, key: str, revno: int, status: str) -> Record | None:
+        """Change a revision's status by appending a new record with the same number; the latest record wins."""
         with self.lock:
-            lst = self.revs[key]
-            for i in range(len(lst) - 1, -1, -1):
-                if lst[i]["revision"] == revno:
-                    nr = dict(lst[i]); nr["status"] = status; nr["ts_status"] = utcnow()
-                    self._append("revisions", nr)
-                    lst[i] = nr
-                    return nr
+            revs = self.revs[key]
+            for i in range(len(revs) - 1, -1, -1):
+                if revs[i]["revision"] == revno:
+                    updated = dict(revs[i])
+                    updated["status"] = status
+                    updated["ts_status"] = utcnow()
+                    self._files["revisions"].append(updated)
+                    revs[i] = updated
+                    return updated
         return None
 
-    # ---- actions / ops
-    def idem_lookup(self, idem_key, payload_hash):
+    # ---- actions / idempotency
+    def idem_lookup(self, idem_key: str, payload_hash: str) -> Record | None:
+        """Return the stored action for an idempotency key, or ``None``.
+
+        Raises:
+            CtlError: 422 when the key was used with a different payload.
+        """
         with self.lock:
             hit = self.idem.get(idem_key)
             if not hit:
@@ -188,8 +163,15 @@ class JobStore:
                 raise CtlError(422, "idempotency_conflict", "idempotency_key reused with a different payload")
             return self.actions.get(hit[1])
 
-    def idem_reserve(self, idem_key, payload_hash, action_id):
-        """Atomic lookup-or-reserve. -> (existing_record_or_None, in_progress_action_id_or_None). Caller must idem_release on failure."""
+    def idem_reserve(self, idem_key: str, payload_hash: str, action_id: str) -> tuple[Record | None, str | None]:
+        """Atomically look up or reserve an idempotency key.
+
+        Returns:
+            ``(existing_record_or_None, in_progress_action_id_or_None)``. The caller must :meth:`idem_release` on failure.
+
+        Raises:
+            CtlError: 422 when the key was used with a different payload.
+        """
         with self.lock:
             hit = self.idem.get(idem_key)
             if hit:
@@ -199,83 +181,81 @@ class JobStore:
             self.idem[idem_key] = (payload_hash, action_id)
             return None, None
 
-    def idem_release(self, idem_key, action_id):
+    def idem_release(self, idem_key: str, action_id: str) -> None:
+        """Drop a reservation that never produced an action."""
         with self.lock:
             hit = self.idem.get(idem_key)
             if hit and hit[1] == action_id and action_id not in self.actions:
                 self.idem.pop(idem_key, None)
 
-    def add_action(self, rec):
+    def add_action(self, rec: Record) -> None:
+        """Persist an action record and index its idempotency key."""
         with self.lock:
-            self._append("actions", rec)
+            self._files["actions"].append(rec)
             self.actions[rec["action_id"]] = rec
             if rec.get("idempotency_key"):
                 self.idem[rec["idempotency_key"]] = (rec["payload_hash"], rec["action_id"])
 
-    def put_op(self, op):
+    # ---- operations
+    def put_op(self, op: Record) -> Record:
+        """Persist the latest state of an operation (a timestamped copy is stored and returned)."""
         with self.lock:
-            op = dict(op); op["ts"] = utcnow()
-            self._append("operations", op)
+            op = dict(op)
+            op["ts"] = utcnow()
+            self._files["operations"].append(op)
             self.ops[op["operation_id"]] = op
             return op
 
     # ---- events (SSE)
-    def emit(self, typ, **data):
-        with self.lock:
-            self.last_seq += 1
-            ev = {"seq": self.last_seq, "ts": utcnow(), "type": typ, "job_id": self.dir.parent.name}
-            for k_ in ("seq", "ts", "type"):
-                data.pop(k_, None)                         # the envelope fields can never be overwritten by a payload kwarg
-            ev.update(data)
-            self._append("events", ev)
-            self.events.append(ev)
-            if len(self.events) > EV_KEEP * 2:
-                del self.events[:-EV_KEEP]
-                self._rotate_events()
-            old, self._ev = self._ev, None
-        if old is not None:
-            try:
-                old[1].call_soon_threadsafe(old[0].set)
-            except Exception:
-                pass
-        return ev
+    @property
+    def last_seq(self) -> int:
+        """Sequence number of the newest event."""
+        return self._events.last_seq
 
-    def waiter(self):
-        """(Event, loop) for the next append; created lazily by an SSE consumer inside the loop."""
-        with self.lock:
-            if self._ev is None:
-                self._ev = (asyncio.Event(), asyncio.get_running_loop())
-            return self._ev[0]
+    @property
+    def events(self) -> list[Record]:
+        """The retained in-memory tail of the event log."""
+        return self._events.events
 
-    def events_after(self, after, limit=None):
-        """-> (events with seq > after (at most the LAST `limit`), reset_needed). reset_needed when the client is behind what we retain."""
-        limit = limit or EV_REPLAY
-        with self.lock:
-            after = max(0, after)
-            evs = [e for e in self.events if e["seq"] > after]
-            reset = len(evs) > limit or bool(self.events and self.events[0]["seq"] > after + 1)
-            if len(evs) > limit:
-                evs = evs[-limit:]
-            return evs, reset
+    def emit(self, typ: str, **data: Any) -> Record:
+        """Append an event; see :meth:`EventLog.emit`."""
+        return self._events.emit(typ, **data)
+
+    def waiter(self) -> Any:
+        """Return the asyncio event set by the next emission."""
+        return self._events.waiter()
+
+    def events_after(self, after: int, limit: int | None = None) -> tuple[list[Record], bool]:
+        """Return events after ``after`` and whether the client must reset; see :meth:`EventLog.events_after`."""
+        return self._events.events_after(after, limit)
 
     # ---- limits / spend
-    def check_preview_rate(self, per_min):
-        now = time.time()
-        with self.lock:
-            while self.previews and now - self.previews[0] > 60:
-                self.previews.popleft()
-            if len(self.previews) >= per_min:
-                raise CtlError(429, "rate_limited", f"at most {per_min} previews per minute", retry_after=int(60 - (now - self.previews[0])) + 1)
-            self.previews.append(now)
+    def check_preview_rate(self, per_min: int) -> None:
+        """Count one preview against the per-minute allowance.
 
-    def add_spend(self, usd=0.0, synth_s=0.0):
+        Raises:
+            CtlError: 429 ``rate_limited`` when the allowance is used up.
+        """
+        with self.lock:
+            retry = self.previews.try_acquire(per_min)
+        if retry is not None:
+            raise CtlError(429, "rate_limited", f"at most {per_min} previews per minute", retry_after=retry)
+
+    def add_spend(self, usd: float = 0.0, synth_s: float = 0.0) -> None:
+        """Add to the job's spend and persist the totals atomically."""
         with self.lock:
             self.spend["usd"] = round(self.spend["usd"] + usd, 6)
             self.spend["synth_s"] = round(self.spend["synth_s"] + synth_s, 3)
             tmp = self.dir / "spend.json.tmp"
-            tmp.write_text(json.dumps(self.spend)); os.replace(tmp, self.dir / "spend.json")
+            tmp.write_text(json.dumps(self.spend))
+            os.replace(tmp, self.dir / "spend.json")
 
-    def check_caps(self, usd_cap, synth_cap_s, need_synth_s=0.0):
+    def check_caps(self, usd_cap: float, synth_cap_s: float, need_synth_s: float = 0.0) -> None:
+        """Refuse work once the job's LLM or synthesis budget is exhausted.
+
+        Raises:
+            CtlError: 429 ``spend_cap`` when a cap is reached.
+        """
         with self.lock:
             if self.spend["usd"] >= usd_cap:
                 raise CtlError(429, "spend_cap", "per-job LLM spend cap reached", retry_after=3600)
@@ -283,13 +263,14 @@ class JobStore:
                 raise CtlError(429, "spend_cap", "per-job synthesis budget reached", retry_after=3600)
 
 
-_STORES = {}
-_SLOCK = threading.Lock()
+_STORES: dict[str, JobStore] = {}
+_STORES_LOCK = threading.Lock()
 
 
-def store_for(job_dir):
-    k = str(Path(job_dir).resolve())
-    with _SLOCK:
-        if k not in _STORES:
-            _STORES[k] = JobStore(job_dir)
-        return _STORES[k]
+def store_for(job_dir: str | Path) -> JobStore:
+    """Return the process-wide store of a job directory, creating it on first use."""
+    key = str(Path(job_dir).resolve())
+    with _STORES_LOCK:
+        if key not in _STORES:
+            _STORES[key] = JobStore(job_dir)
+        return _STORES[key]

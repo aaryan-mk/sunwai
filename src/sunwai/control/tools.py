@@ -1,102 +1,190 @@
-"""strict tool schemas (shared by Gemini declarations, server validation and the action API)."""
-import re
+"""Strict tool schemas shared by the Gemini declarations, server-side validation and the action API."""
 
-LANG_RE = re.compile(r"^[a-z]{2,3}$")
-SEG_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
+from __future__ import annotations
+
+import re
+from collections.abc import Callable
+from typing import Any, NamedTuple
+
+from sunwai.control.guard import LANG_RE, SEG_RE
+
 INTENTS = ["angrier", "sadder", "calmer", "excited"]
 SUBMODES = ["off", "original", "dub", "dual"]
 MAX_EDIT = 600
+TEMPO_RANGE = (0.92, 1.08)
+ACTION_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,40}$")
+VOICE_RE = re.compile(r"^[A-Za-z0-9_.\- ]+$")
 
-# name -> (description, {prop: spec}, required)
-_S = {"type": "string"}
-TOOLS = {
-    "inspect": ("Read the job state (segments, languages, metrics). No side effects.", {"lang": {"type": "string"}}, []),
-    "edit_line": ("Replace the dubbed text of one line and re-synthesise it. Reversible.", {"segment_id": _S, "text": {"type": "string"}}, ["segment_id", "text"]),
-    "undo_line": ("Undo the last edit of one line (creates a new revision restoring the previous text).", {"segment_id": _S}, ["segment_id"]),
-    "redo_line": ("Re-apply the edit that the last undo_line removed (only right after an undo).", {"segment_id": _S}, ["segment_id"]),
-    "change_expression": ("Preview a different delivery for one line.", {"segment_id": _S, "intent": {"type": "string", "enum": INTENTS}}, ["segment_id", "intent"]),
-    "retime": ("Preview a speaking-tempo change for one line inside its fixed slot (0.92-1.08).", {"segment_id": _S, "tempo_factor": {"type": "number"}}, ["segment_id", "tempo_factor"]),
-    "switch_language": ("Switch the player to another language of this job.", {"lang": _S}, ["lang"]),
-    "add_language": ("Prepare another target language, starting from a position in ms.", {"lang": _S, "from_ms": {"type": "integer"}}, ["lang", "from_ms"]),
-    "regenerate_chunk": ("Regenerate a whole chunk (long, needs confirmation).", {"chunk_id": {"type": "integer"}}, ["chunk_id"]),
-    "change_voice": ("Propose a different voice for a speaker. Never applied in place: creates a fork proposal for a NEW job.", {"speaker_id": _S, "voice": _S}, ["speaker_id", "voice"]),
-    "subtitles": ("Set the subtitle display mode.", {"mode": {"type": "string", "enum": SUBMODES}}, ["mode"]),
-    "explain": ("Explain what a past action did (or the latest one).", {"action_id": _S}, []),
-    "report_issue": ("Record a problem report for the team.", {"details": {"type": "string"}}, ["details"]),
+_STR: dict[str, Any] = {"type": "string"}
+
+
+class ToolSpec(NamedTuple):
+    """Schema of one tool: description, JSON-schema properties and the required property names."""
+
+    description: str
+    props: dict[str, dict[str, Any]]
+    required: list[str]
+
+
+TOOLS: dict[str, ToolSpec] = {
+    "inspect": ToolSpec("Read the job state (segments, languages, metrics). No side effects.", {"lang": {"type": "string"}}, []),
+    "edit_line": ToolSpec(
+        "Replace the dubbed text of one line and re-synthesise it. Reversible.",
+        {"segment_id": _STR, "text": {"type": "string"}},
+        ["segment_id", "text"],
+    ),
+    "undo_line": ToolSpec(
+        "Undo the last edit of one line (creates a new revision restoring the previous text).", {"segment_id": _STR}, ["segment_id"]
+    ),
+    "redo_line": ToolSpec(
+        "Re-apply the edit that the last undo_line removed (only right after an undo).", {"segment_id": _STR}, ["segment_id"]
+    ),
+    "change_expression": ToolSpec(
+        "Preview a different delivery for one line.",
+        {"segment_id": _STR, "intent": {"type": "string", "enum": INTENTS}},
+        ["segment_id", "intent"],
+    ),
+    "retime": ToolSpec(
+        "Preview a speaking-tempo change for one line inside its fixed slot (0.92-1.08).",
+        {"segment_id": _STR, "tempo_factor": {"type": "number"}},
+        ["segment_id", "tempo_factor"],
+    ),
+    "switch_language": ToolSpec("Switch the player to another language of this job.", {"lang": _STR}, ["lang"]),
+    "add_language": ToolSpec(
+        "Prepare another target language, starting from a position in ms.",
+        {"lang": _STR, "from_ms": {"type": "integer"}},
+        ["lang", "from_ms"],
+    ),
+    "regenerate_chunk": ToolSpec(
+        "Regenerate a whole chunk (long, needs confirmation).", {"chunk_id": {"type": "integer"}}, ["chunk_id"]
+    ),
+    "change_voice": ToolSpec(
+        "Propose a different voice for a speaker. Never applied in place: creates a fork proposal for a NEW job.",
+        {"speaker_id": _STR, "voice": _STR},
+        ["speaker_id", "voice"],
+    ),
+    "subtitles": ToolSpec("Set the subtitle display mode.", {"mode": {"type": "string", "enum": SUBMODES}}, ["mode"]),
+    "explain": ToolSpec("Explain what a past action did (or the latest one).", {"action_id": _STR}, []),
+    "report_issue": ToolSpec("Record a problem report for the team.", {"details": {"type": "string"}}, ["details"]),
 }
 CLIENT_TOOLS = {"inspect", "switch_language", "subtitles", "explain"}
-AUTO_TOOLS = {"edit_line", "undo_line", "redo_line", "change_expression", "retime", "report_issue"}   # reversible / preview: no token
-CONFIRM_TOOLS = {"regenerate_chunk", "change_voice"}                                        # long / fork: token required
+AUTO_TOOLS = {"edit_line", "undo_line", "redo_line", "change_expression", "retime", "report_issue"}  # reversible / preview: no token
+CONFIRM_TOOLS = {"regenerate_chunk", "change_voice"}  # long / fork: token required
 
 
-def declarations():
+def declarations() -> list[dict[str, Any]]:
+    """Return the function declarations handed to the planner model."""
     out = []
-    for n, (d, props, req) in TOOLS.items():
-        p = {"type": "object", "properties": props}
-        if req:
-            p["required"] = req
-        out.append({"name": n, "description": d, "parameters": p})
+    for name, spec in TOOLS.items():
+        parameters: dict[str, Any] = {"type": "object", "properties": spec.props}
+        if spec.required:
+            parameters["required"] = spec.required
+        out.append({"name": name, "description": spec.description, "parameters": parameters})
     return out
 
 
 class BadArgs(ValueError):
-    pass
+    """Tool arguments failed validation."""
 
 
-def validate_args(name, args):
-    """Strict: unknown tool / extra fields / wrong types / out-of-range all raise BadArgs. Returns a cleaned copy."""
+def _coerce(key: str, spec: dict[str, Any], value: Any) -> Any:
+    """Check one value against its property spec and return it in canonical form."""
+    kind = spec["type"]
+    if kind == "string":
+        if not isinstance(value, str):
+            raise BadArgs(f"{key} must be a string")
+        if "enum" in spec and value not in spec["enum"]:
+            raise BadArgs(f"{key} must be one of {spec['enum']}")
+    elif kind == "integer":
+        if isinstance(value, bool) or not isinstance(value, int):
+            if isinstance(value, float) and value.is_integer():
+                return int(value)
+            raise BadArgs(f"{key} must be an integer")
+    elif kind == "number":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise BadArgs(f"{key} must be a number")
+        return float(value)
+    return value
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise BadArgs(message)
+
+
+def _check_edit_line(args: dict[str, Any]) -> None:
+    text = args["text"]
+    _require(bool(text.strip()) and len(text) <= MAX_EDIT, f"text must be 1..{MAX_EDIT} chars")
+
+
+def _check_retime(args: dict[str, Any]) -> None:
+    _require(TEMPO_RANGE[0] <= args["tempo_factor"] <= TEMPO_RANGE[1], "tempo_factor must be within 0.92..1.08")
+
+
+def _check_add_language(args: dict[str, Any]) -> None:
+    _require(args["from_ms"] >= 0, "from_ms must be >= 0")
+
+
+def _check_regenerate(args: dict[str, Any]) -> None:
+    _require(args["chunk_id"] >= 0, "chunk_id must be >= 0")
+
+
+def _check_explain(args: dict[str, Any]) -> None:
+    _require("action_id" not in args or bool(ACTION_ID_RE.match(args["action_id"])), "invalid action_id")
+
+
+def _check_report(args: dict[str, Any]) -> None:
+    _require(1 <= len(args["details"]) <= 1000, "details must be 1..1000 chars")
+
+
+def _check_voice(args: dict[str, Any]) -> None:
+    _require(1 <= len(args["voice"]) <= 64, "voice must be 1..64 chars")
+    _require(bool(VOICE_RE.match(args["voice"])), "voice has invalid characters")
+
+
+_SEMANTIC_CHECKS: dict[str, Callable[[dict[str, Any]], None]] = {
+    "edit_line": _check_edit_line,
+    "retime": _check_retime,
+    "add_language": _check_add_language,
+    "regenerate_chunk": _check_regenerate,
+    "explain": _check_explain,
+    "report_issue": _check_report,
+    "change_voice": _check_voice,
+}
+
+
+def validate_args(name: str, args: Any) -> dict[str, Any]:
+    """Strictly validate a tool call.
+
+    Unknown tools, extra or missing fields, wrong types and out-of-range values all raise.
+
+    Args:
+        name: Tool name.
+        args: Raw arguments from the model or client.
+
+    Returns:
+        A cleaned copy of the arguments.
+
+    Raises:
+        BadArgs: When anything is invalid.
+    """
     if name not in TOOLS:
         raise BadArgs(f"unknown tool {name!r}")
     if not isinstance(args, dict):
         raise BadArgs("args must be an object")
-    _, props, req = TOOLS[name]
-    extra = set(args) - set(props)
+    spec = TOOLS[name]
+    extra = set(args) - set(spec.props)
     if extra:
         raise BadArgs(f"unexpected fields: {sorted(extra)}")
-    for r in req:
-        if r not in args:
-            raise BadArgs(f"missing field {r}")
-    out = {}
-    for k, v in args.items():
-        spec = props[k]
-        t = spec["type"]
-        if t == "string":
-            if not isinstance(v, str):
-                raise BadArgs(f"{k} must be a string")
-            if "enum" in spec and v not in spec["enum"]:
-                raise BadArgs(f"{k} must be one of {spec['enum']}")
-        elif t == "integer":
-            if isinstance(v, bool) or not isinstance(v, int):
-                if isinstance(v, float) and v.is_integer():
-                    v = int(v)
-                else:
-                    raise BadArgs(f"{k} must be an integer")
-        elif t == "number":
-            if isinstance(v, bool) or not isinstance(v, (int, float)):
-                raise BadArgs(f"{k} must be a number")
-            v = float(v)
-        out[k] = v
+    for required in spec.required:
+        if required not in args:
+            raise BadArgs(f"missing field {required}")
+    out = {key: _coerce(key, spec.props[key], value) for key, value in args.items()}
     if "segment_id" in out and not SEG_RE.match(out["segment_id"]):
         raise BadArgs("invalid segment_id")
-    for lk in ("lang",):
-        if lk in out and not LANG_RE.match(out[lk]):
-            raise BadArgs("invalid lang")
-    if name == "edit_line":
-        t = out["text"]
-        if not t.strip() or len(t) > MAX_EDIT:
-            raise BadArgs(f"text must be 1..{MAX_EDIT} chars")
-    if name == "retime" and not (0.92 <= out["tempo_factor"] <= 1.08):
-        raise BadArgs("tempo_factor must be within 0.92..1.08")
-    if name == "add_language" and out["from_ms"] < 0:
-        raise BadArgs("from_ms must be >= 0")
-    if name == "regenerate_chunk" and out["chunk_id"] < 0:
-        raise BadArgs("chunk_id must be >= 0")
-    if name == "explain" and "action_id" in out and not re.match(r"^[A-Za-z0-9_\-]{1,40}$", out["action_id"]):
-        raise BadArgs("invalid action_id")
-    if name == "report_issue" and not (1 <= len(out["details"]) <= 1000):
-        raise BadArgs("details must be 1..1000 chars")
-    if name == "change_voice" and not (1 <= len(out["voice"]) <= 64):
-        raise BadArgs("voice must be 1..64 chars")
-    if name == "change_voice" and not re.match(r"^[A-Za-z0-9_.\- ]+$", out["voice"]):
-        raise BadArgs("voice has invalid characters")
+    if "lang" in out and not LANG_RE.match(out["lang"]):
+        raise BadArgs("invalid lang")
+    check = _SEMANTIC_CHECKS.get(name)
+    if check:
+        check(out)
     return out

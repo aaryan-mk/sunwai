@@ -4,6 +4,8 @@ import asyncio, time
 from pathlib import Path
 
 from sunwai.control import hooks as ctl_hooks
+from sunwai.control.expression import revisions as ex_rev
+from sunwai.control.expression.fsutil import read_json, sha256_file
 from sunwai.control.store import CtlError
 
 
@@ -59,12 +61,12 @@ def install(ns, log=print):
                 if kind == "cand":
                     if not m2_candidate_id or not _re.match(r"^[A-Za-z0-9_\-]{1,40}$", m2_candidate_id):
                         raise FileNotFoundError("no candidate")
-                    rec = ex._jr(Path(ex._x(od)) / "cands" / f"{m2_candidate_id}.json") or {}
+                    rec = read_json(Path(ex_rev.expr_dir(od)) / "cands" / f"{m2_candidate_id}.json") or {}
                     p = Path(rec.get("audio_path") or "")
                 elif is_head:
-                    p = Path(ex._active_wav(od, segment_id))
+                    p = Path(ex_rev.active_wav(od, segment_id))
                 elif m2_revision is not None:                       # an older revision: serve THAT revision's snapshot, never the newer live audio
-                    p = Path(ex._rev_wav(od, segment_id, m2_revision))
+                    p = Path(ex_rev.revision_wav(od, segment_id, m2_revision))
                 else:
                     raise FileNotFoundError("old version gone")
                 p = p.resolve()
@@ -123,17 +125,16 @@ def install(ns, log=print):
             def lipsync_hash_ok(job_dir, lang, idx):
                 """True/False when expression recorded a chunk_audio_hash for this chunk (compare with the dub.wav now); None = unknown (mtime rule only)."""
                 try:
-                    from sunwai.control import expression as ex2
                     od = ns["resolve_chunk_dir"](Path(job_dir), lang, int(idx))
-                    xd = Path(ex2._x(od))
+                    xd = Path(ex_rev.expr_dir(od))
                     best = None
                     for f in xd.glob("seg*.revs.jsonl"):
-                        for rec in ex2._read_revs(od, f.name[3:-len(".revs.jsonl")]):
+                        for rec in ex_rev.read_revisions(od, f.name[3:-len(".revs.jsonl")]):
                             if rec.get("chunk_audio_hash"):
                                 best = rec["chunk_audio_hash"]
                     if best is None or not (od / "dub.wav").exists():
                         return None
-                    return ex2._sha(od / "dub.wav") == best
+                    return sha256_file(od / "dub.wav") == best
                 except Exception:
                     return None
             def job_active(job_id):
@@ -175,7 +176,7 @@ def install(ns, log=print):
                 """server2's startup reconcile only resumes jobs that were queued/running; a finished job whose new language was merged
                 just before a crash would stay un-dubbed. Roll every stranded (phase=scheduling) track forward."""
                 try:
-                    from sunwai.control.service import addlang_enabled
+                    from sunwai.control.settings import addlang_enabled
                     if not addlang_enabled():          # kill switch: leave stranded intents untouched
                         return
                     acts = ls.recover_all(ns["DUB_ROOT"], hooks)

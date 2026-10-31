@@ -65,7 +65,7 @@ chk(
 )
 chk(
     "lipsync_complete matching -> accepted + ready",
-    E.lipsync_complete(d10, 1, rv["revision"], E._sha(d10 / "dub.wav")) == "accepted"
+    E.lipsync_complete(d10, 1, rv["revision"], sha256_file(d10 / "dub.wav")) == "accepted"
     and E.lipsync_state(d10, "hi", 1) == "ready",
 )
 os.utime(d10 / "dub_hi_lipsync.mp4", ns=(1, 1))
@@ -135,7 +135,7 @@ os.environ["EXPRESSION_ENABLED"] = _e
 def snapall(d):
     return {
         n: (d / n).read_bytes() for n in ("dub.wav", "dub_hi.mp4", "tts_placed.json", "tts/1.wav", "segments.json")
-    } | {"revs": E._read_revs(d, 1).__len__(), "files": sorted(p.name for p in d.glob("dub_*.mp4"))}
+    } | {"revs": read_revisions(d, 1).__len__(), "files": sorted(p.name for p in d.glob("dub_*.mp4"))}
 
 
 def good_mix(d):
@@ -148,7 +148,12 @@ def good_mix(d):
     return r
 
 
-_orig = {k: getattr(E, k) for k in ("_snap", "_op", "_jw", "_append_rev")}
+from sunwai.control.expression import commit as _commit
+from sunwai.control.expression.fsutil import read_json
+from sunwai.control.expression.revisions import append_revision, revisions_path
+
+_PATCHED = {"_snap": "snapshot_audio", "_op": "update_operation", "_jw": "write_json_atomic", "_append_rev": "append_revision"}
+_orig = {k: getattr(_commit, v) for k, v in _PATCHED.items()}
 
 
 def failing(name, only=None):
@@ -169,26 +174,26 @@ for what, only in (("_snap", None), ("_op", None), ("_jw", "cands"), ("_append_r
     E.head_revision(dd, "hi", 1)
     c = E.do_expression_resynth(dd, "hi", 1, "angrier", 0, "bk" + what, **kw(lambda *a: wav(1.8)))
     b = snapall(dd)
-    setattr(E, what, failing(what, only))
+    setattr(_commit, _PATCHED[what], failing(what, only))
     try:
         E.apply_candidate(dd, 1, c["candidate_id"], 0, lang="hi", remix=good_mix(dd))
         ok = False
     except OSError:
         ok = True
     finally:
-        setattr(E, what, _orig[what])
+        setattr(_commit, _PATCHED[what], _orig[what])
     chk(
         f"apply: {what} failure after remix -> playback restored (incl. new dub_zz.mp4 removed), no revision, candidate unapplied",
-        ok and snapall(dd) == b and not E._jr(dd / "expr" / "cands" / f"{c['candidate_id']}.json").get("applied"),
+        ok and snapall(dd) == b and not read_json(dd / "expr" / "cands" / f"{c['candidate_id']}.json").get("applied"),
     )
     c2 = E.apply_candidate(dd, 1, c["candidate_id"], 0, lang="hi", remix=good_mix(dd))
     chk(f"apply retry after {what} rollback succeeds", c2["revision"] == 1)
     if what == "_op":
         continue
     b = snapall(dd)
-    setattr(E, what, failing(what, only if what != "_jw" else "NOPE"))
+    setattr(_commit, _PATCHED[what], failing(what, only if what != "_jw" else "NOPE"))
     if what == "_jw":
-        setattr(E, what, _orig[what])
+        setattr(_commit, _PATCHED[what], _orig[what])
     if what in ("_snap", "_append_rev"):
         try:
             E.undo_revision(dd, 1, 1, lang="hi", remix=good_mix(dd))
@@ -196,12 +201,12 @@ for what, only in (("_snap", None), ("_op", None), ("_jw", "cands"), ("_append_r
         except OSError:
             ok = True
         finally:
-            setattr(E, what, _orig[what])
+            setattr(_commit, _PATCHED[what], _orig[what])
         chk(f"undo: {what} failure after remix -> playback restored, no revision", ok and snapall(dd) == b)
 # torn append: truncated back
 dt = mk()
 E.head_revision(dt, "hi", 1)
-p = E._revs_path(dt, 1)
+p = revisions_path(dt, 1)
 sz = p.stat().st_size
 import builtins
 
@@ -210,32 +215,32 @@ class Boom(Exception):
     pass
 
 
-_ow = E.os.fsync
-E.os.fsync = lambda fd: (_ for _ in ()).throw(OSError("fsync boom"))
+_ow = os.fsync
+os.fsync = lambda fd: (_ for _ in ()).throw(OSError("fsync boom"))
 try:
-    E._append_rev(dt, 1, {"revision": 99})
+    append_revision(dt, 1, {"revision": 99})
 except OSError:
     pass
-E.os.fsync = _ow
+os.fsync = _ow
 chk("torn append truncated back to prior size", p.stat().st_size == sz)
 
 # ---- r3
 dr = mk()
 E.head_revision(dr, "hi", 1)
-p = E._revs_path(dr, 1)
+p = revisions_path(dr, 1)
 with open(p, "a") as f:
     f.write('{"revision": 5, "torn')
-chk("torn final line skipped on load", len(E._read_revs(dr, 1)) == 1 and E.head_revision(dr, "hi", 1)["revision"] == 0)
+chk("torn final line skipped on load", len(read_revisions(dr, 1)) == 1 and E.head_revision(dr, "hi", 1)["revision"] == 0)
 cr = E.do_expression_resynth(dr, "hi", 1, "angrier", 0, "t1", **kw(lambda *a: wav(1.8)))
 rv = E.apply_candidate(dr, 1, cr["candidate_id"], 0, lang="hi", remix=lambda: None)
 chk(
     "append after torn tail heals it (2 clean records, parse ok)",
-    [r["revision"] for r in E._read_revs(dr, 1)] == [0, 1] and all(json.loads(l) for l in p.read_text().splitlines()),
+    [r["revision"] for r in read_revisions(dr, 1)] == [0, 1] and all(json.loads(l) for l in p.read_text().splitlines()),
 )
 with open(p, "w") as f:
     f.write("garbage\n" + json.dumps({"revision": 0}) + "\n")
 try:
-    E._read_revs(dr, 1)
+    read_revisions(dr, 1)
     chk("corrupt middle line still raises", False)
 except ValueError:
     chk("corrupt middle line still raises", True)
@@ -333,7 +338,7 @@ chk(
 )
 chk(
     "no spurious external/legacy revision in expression log",
-    [r["origin"] for r in E._read_revs(dl, 1)] == ["initial", "expression", "undo"],
+    [r["origin"] for r in read_revisions(dl, 1)] == ["initial", "expression", "undo"],
 )
 chk(
     "undo-of-undo (redo) restores the expression, markers back",
