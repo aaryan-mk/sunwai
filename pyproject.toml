@@ -30,7 +30,7 @@ dependencies = [
 [project.optional-dependencies]
 # HTTP API and static web UI.
 server = [
-  "fastapi>=0.115",
+  "fastapi>=0.115.2",
   "uvicorn>=0.30",
 ]
 # Planning and speaker models (pyannote needs a Hugging Face token with the model terms accepted).
@@ -64,7 +64,7 @@ lipsync = [
 ]
 indictrans2 = ["IndicTransToolkit", "transformers>=4.48", "torch>=2.5"]
 dev = [
-  "fastapi>=0.115",
+  "fastapi>=0.115.2",
   "uvicorn>=0.30",
   "pytest>=8",
   "pytest-cov>=5",
@@ -134,7 +134,6 @@ convention = "google"
 "src/sunwai/planning/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/jobs/language_scheduler.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/control/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
-"src/sunwai/server/legacy_app.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/server/routers/control.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/lipsync/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/workers/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
@@ -169,7 +168,7 @@ exclude = [
   "src/sunwai/pipeline/stages/separate.py",
   "src/sunwai/pipeline/stages/mix.py",
   "src/sunwai/pipeline/fitting/fit_stage.py", "src/sunwai/planning/*.py",
-  "src/sunwai/jobs/language_scheduler.py", "src/sunwai/control/*.py", "src/sunwai/server/legacy_app.py",
+  "src/sunwai/jobs/language_scheduler.py", "src/sunwai/control/*.py",
   "src/sunwai/server/routers/control.py", "src/sunwai/lipsync/*.py", "src/sunwai/workers/*.py", "src/sunwai/mirrors/*.py",
   "src/sunwai/clients/llm.py", "tests/unit/test_backend_switch.py", "tests/unit/test_crash_window.py",
   "tests/unit/test_language_scheduler.py",
@@ -187,7 +186,7 @@ warn_unused_ignores = false
 [[tool.mypy.overrides]]
 module = [
   "sunwai.pipeline.engine", "sunwai.pipeline.shared_prep", "sunwai.pipeline.resynth", "sunwai.pipeline.voices", "sunwai.pipeline.support.*", "sunwai.pipeline.mixing.*", "sunwai.media.*", "sunwai.language.*", "sunwai.synthesis.*", "sunwai.clients.service_calls", "sunwai.clients.service_endpoints", "sunwai.pipeline.stages.fetch", "sunwai.pipeline.stages.audio", "sunwai.pipeline.stages.vad", "sunwai.pipeline.stages.slots", "sunwai.pipeline.stages.speakers", "sunwai.pipeline.stages.asr", "sunwai.pipeline.stages.numbers", "sunwai.pipeline.stages.mt", "sunwai.pipeline.stages.tts", "sunwai.pipeline.stages.separate", "sunwai.pipeline.stages.mix", "sunwai.pipeline.fitting.fit_stage", "sunwai.planning.*", "sunwai.jobs.language_scheduler",
-  "sunwai.control.*", "sunwai.server.legacy_app", "sunwai.server.routers.control", "sunwai.lipsync.*", "sunwai.workers.*",
+  "sunwai.control.*", "sunwai.server.routers.control", "sunwai.lipsync.*", "sunwai.workers.*",
   "sunwai.mirrors.*", "sunwai.clients.llm",
 ]
 # Deliberate, temporary: these modules are the original implementation moved verbatim and are not yet annotated.
