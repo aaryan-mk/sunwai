@@ -167,9 +167,7 @@ exclude = [
   "src/sunwai/pipeline/stages/tts.py",
   "src/sunwai/pipeline/stages/separate.py",
   "src/sunwai/pipeline/stages/mix.py",
-  "src/sunwai/pipeline/fitting/fit_stage.py", "src/sunwai/planning/*.py",
-  "src/sunwai/jobs/language_scheduler.py", "src/sunwai/control/*.py",
-  "src/sunwai/server/routers/control.py", "src/sunwai/lipsync/*.py", "src/sunwai/workers/*.py", "src/sunwai/mirrors/*.py",
+  "src/sunwai/pipeline/fitting/fit_stage.py", "src/sunwai/server/routers/control.py",
   "src/sunwai/clients/llm.py", "tests/unit/test_backend_switch.py", "tests/unit/test_crash_window.py",
   "tests/unit/test_language_scheduler.py",
 ]

@@ -37,12 +37,13 @@ CHILD = textwrap.dedent('''
         called["ensure"] = True
         if point == "in_ensure":
             os._exit(9)
-    real = L._atomic_json
+    from sunwai.jobs.scheduler import store
+    real = store.atomic_json
     def aj(p, obj):
         if point == "before_commit" and Path(p).name == "tracks.json" and called["ensure"]:
             os._exit(9)
         return real(p, obj)
-    L._atomic_json = aj
+    store.atomic_json = aj
     h = L.Hooks(ensure_running=ensure, target_codes=lambda: {"hi", "ta", "bn"})
     L.request_track(jd, "ta", 0, 1, hooks=h)
 ''')
@@ -198,10 +199,10 @@ def test_service_release_hook_wiring(tmp_path):
     from sunwai.control import service as ctl_service
     got = []
     ctl_hooks.release_language = lambda j, l, r: got.append((j, l, r))
-    ctl_service.ActionService._release_lang("jid", "ta", "boom")
+    ctl_service.ActionService.release_language("jid", "ta", "boom")
     assert got == [("jid", "ta", "boom")]
     ctl_hooks.release_language = lambda *a: (_ for _ in ()).throw(RuntimeError("x"))
-    ctl_service.ActionService._release_lang("jid", "ta", "boom")         # swallowed
+    ctl_service.ActionService.release_language("jid", "ta", "boom")         # swallowed
 
 
 def test_marker_frees_only_when_job_task_dead(tmp_path):
@@ -230,7 +231,7 @@ def test_orphaned_committed_track_frees_after_grace_when_job_dead(tmp_path, monk
     # unknown liveness (no hook) never frees a scheduled track
     C = mkjob(tmp_path, "cccccccccccc")
     h2 = L.Hooks(target_codes=lambda: {"hi", "ta", "bn"})
-    L._INFLIGHT.clear()
+    L.SCHEDULER.inflight.clear()
     with pytest.raises(L.LangSchedError):
         L.request_track(C, "ta", 0, 1, hooks=h2)
 
@@ -240,14 +241,15 @@ def test_retry_commit_failure_is_reconcile_not_error(tmp_path, monkeypatch):
     L = load(); ran = []
     h = L.Hooks(ensure_running=lambda j: ran.append(j), target_codes=lambda: {"hi", "ta"})
     L.request_track(A, "ta", 0, 1, hooks=h); L.release_track(A, "ta", "x"); ran.clear()
-    real = L._atomic_json; n = {"c": 0}
+    from sunwai.jobs.scheduler import store
+    real = store.atomic_json; n = {"c": 0}
     def aj(p, o):
         if Path(p).name == "tracks.json":
             n["c"] += 1
             if n["c"] == 2:
                 raise OSError("ENOSPC")
         return real(p, o)
-    monkeypatch.setattr(L, "_atomic_json", aj)
+    monkeypatch.setattr(store, "atomic_json", aj)
     r = L.request_track(A, "ta", 0, 2, hooks=h)
     assert ran and r["reconcile"] and "ENOSPC" in r["reconcile"]["reason"]
 

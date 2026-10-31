@@ -172,7 +172,7 @@ def test_ctl_chat_error_maps_to_ctlerror(monkeypatch):
     import requests
     monkeypatch.setattr(requests, "post", lambda *a, **k: Resp(403, {}))
     with pytest.raises(CtlError) as e:
-        ctl_chat._call_gemini("S", [{"role": "user", "parts": [{"text": "x"}]}], False, set())
+        ctl_chat.call_planner("S", [{"role": "user", "parts": [{"text": "x"}]}], False, set())
     assert e.value.code == "planner_unavailable" and "403" in str(e.value.detail) and SECRET not in str(e.value.detail)
 
 

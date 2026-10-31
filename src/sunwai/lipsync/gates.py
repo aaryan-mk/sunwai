@@ -1,251 +1,331 @@
-"""active-speaker gate for the lip-sync engine.
+"""Active-speaker gate for the lip-sync engine.
+
 Decides, per frame, whether the face that LatentSync would re-animate is actually speaking in the ORIGINAL video.
-Evidence: SyncNet v2 (already on disk) audio-visual confidence of the S3FD face track against the ORIGINAL audio,
-computed on sliding 2 s windows.  Kill switch: env LIP_ASD=0 (parsed robustly).  Fail-open on any exception.
+Evidence is the SyncNet v2 audio-visual confidence of the face track against the original audio, computed on
+sliding 2 s windows (:mod:`sunwai.lipsync.syncnet`). Static faces (stills, frozen frames) are decided by mouth
+motion instead. Kill switch: env ``LIP_ASD=0``. The engine fails open on any exception.
 """
-import os, numpy as np, cv2, torch
-from scipy import signal
-import python_speech_features
 
-FPS = 25
+from __future__ import annotations
+
+import os
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+import numpy as np
+import numpy.typing as npt
+
+from sunwai.lipsync.flags import env_enabled, env_opt_in
+from sunwai.lipsync.syncnet import Scores, SyncNetScorer
+from sunwai.lipsync.tracking import Detection, FaceTrack, face_crops, link_tracks
+
+MOTION_SMOOTHING = 25
+MOUTH_ROWS = slice(120, 210)
+MOUTH_COLS = slice(50, 174)
+S3FD_CONF = 0.9
+S3FD_SCALES = [0.25]
 
 
-def enabled():
-    return str(os.environ.get("LIP_ASD", "1")).strip().lower() not in ("0", "false", "off", "no", "")
+def gate_enabled() -> bool:
+    """Return False when the gate is switched off with env ``LIP_ASD``."""
+    return env_enabled("LIP_ASD")
 
 
-def _pdist(f1, f2, vshift=15):
-    w = 2 * vshift + 1
-    f2p = torch.nn.functional.pad(f2, (0, 0, vshift, vshift))
-    u = f2p.unfold(0, w, 1)[: f1.shape[0]]          # [T,1024,w]
-    return (f1[:, :, None] - u).norm(dim=1)         # [T,w]
+@dataclass(frozen=True)
+class GateConfig:
+    """Thresholds of the speaking decision.
+
+    Attributes:
+        conf_th: Minimum SyncNet confidence for a speaking face.
+        off_max: Largest absolute audio-visual offset (frames) still counted as in sync.
+        static_th: Mouth-motion threshold below which a face counts as static.
+        static_sync: Also lip-sync static faces (default off: a still photo gets no mouth movement).
+    """
+
+    conf_th: float = 2.7
+    off_max: int = 8
+    static_th: float = 0.05
+    static_sync: bool = False
+
+    @classmethod
+    def from_env(cls, conf_th: float | None = None) -> GateConfig:
+        """Read thresholds from ``LIP_ASD_CONF``, ``LIP_ASD_OFFMAX``, ``LIP_ASD_STATIC`` and ``LIP_ASD_STATIC_SYNC``.
+
+        Args:
+            conf_th: Explicit confidence threshold overriding the environment.
+
+        Returns:
+            The configuration.
+        """
+        return cls(
+            conf_th=float(conf_th if conf_th is not None else os.environ.get("LIP_ASD_CONF", "2.7")),
+            off_max=int(os.environ.get("LIP_ASD_OFFMAX", "8")),
+            static_th=float(os.environ.get("LIP_ASD_STATIC", "0.05")),
+            static_sync=env_opt_in("LIP_ASD_STATIC_SYNC"),
+        )
+
+
+class TrackScorer(Protocol):
+    """Anything that scores face crops against audio (SyncNet in production, a fake in tests)."""
+
+    def score_track(self, crops: npt.NDArray[np.uint8], wav: npt.NDArray[np.int16], t0_frame: int) -> Scores:
+        """Return per-frame ``(confidence, offset)`` for the crops."""
+        ...
+
+
+CropFn = Callable[[FaceTrack, npt.NDArray[np.uint8], int], npt.NDArray[np.uint8]]
+
+
+@dataclass
+class SpeakingTrack:
+    """A face track with its speaking decision.
+
+    Attributes:
+        tid: Track index within the window.
+        frame: Absolute chunk frame indices of the track.
+        lm: Absolute frame index to 3-point landmarks.
+        mask: True where the face is speaking in the original video.
+        conf: SyncNet confidence per frame.
+        off: SyncNet audio-visual offset per frame.
+        mot: Mouth motion per frame.
+        bbox: Face boxes per frame.
+    """
+
+    tid: int
+    frame: npt.NDArray[np.int_]
+    lm: dict[int, Any]
+    mask: npt.NDArray[np.bool_]
+    conf: npt.NDArray[np.float64]
+    off: npt.NDArray[np.float64]
+    mot: npt.NDArray[np.float32]
+    bbox: npt.NDArray[np.float64]
+
+
+def mouth_motion(crops: npt.NDArray[np.uint8]) -> npt.NDArray[np.float32]:
+    """Per-frame inter-frame motion of the mouth region (lower-centre of the 224 crop), median-smoothed.
+
+    A still photo or frozen frame scores about 0 even though SyncNet cannot score it.
+
+    Args:
+        crops: ``[T, 224, 224, 3]`` BGR crops.
+
+    Returns:
+        ``[T]`` mean absolute grey difference to the previous frame.
+    """
+    import cv2
+    from scipy import signal
+
+    gray = np.stack(
+        [cv2.cvtColor(np.ascontiguousarray(c[MOUTH_ROWS, MOUTH_COLS]), cv2.COLOR_BGR2GRAY) for c in crops]
+    ).astype(np.float32)
+    diff = np.zeros(len(gray), np.float32)
+    if len(gray) > 1:
+        diff[1:] = np.abs(gray[1:] - gray[:-1]).mean((1, 2))
+        diff[0] = diff[1]
+    kernel = min(MOTION_SMOOTHING, len(diff)) | 1
+    return np.asarray(signal.medfilt(diff, kernel), np.float32) if len(diff) >= 3 else diff
+
+
+def speaking_mask(
+    conf: npt.NDArray[np.float64], off: npt.NDArray[np.float64], motion: npt.NDArray[np.float32], config: GateConfig
+) -> npt.NDArray[np.bool_]:
+    """Combine SyncNet evidence and mouth motion into a per-frame speaking decision.
+
+    Args:
+        conf: SyncNet confidence per frame (NaN where undefined).
+        off: SyncNet offset per frame.
+        motion: Mouth motion per frame.
+        config: Thresholds.
+
+    Returns:
+        True where the face is speaking; static faces follow ``config.static_sync``.
+    """
+    synced = (~np.isnan(conf)) & (conf >= config.conf_th) & (np.abs(np.nan_to_num(off, nan=99)) <= config.off_max)
+    return np.asarray(np.where(motion < config.static_th, config.static_sync, synced), bool)
+
+
+@dataclass
+class ScoredTrack:
+    """A tracked face with all per-frame evidence."""
+
+    track: FaceTrack
+    conf: npt.NDArray[np.float64]
+    off: npt.NDArray[np.float64]
+    mot: npt.NDArray[np.float32]
+
+
+def nearest_track_sample(
+    scored: Sequence[ScoredTrack], frame_offset: int, center: Sequence[float]
+) -> tuple[float, float, float] | None:
+    """Pick the evidence of the track whose box contains ``center`` (the edited face's nose point).
+
+    Args:
+        scored: Scored tracks (frame offsets relative to the window start).
+        frame_offset: Frame offset within the window.
+        center: ``(x, y)`` of the face LatentSync would edit.
+
+    Returns:
+        ``(conf, off, motion)`` of the closest containing track, or None when no track contains the point.
+    """
+    best: tuple[float, tuple[float, float, float]] | None = None
+    for item in scored:
+        k = frame_offset - int(item.track.frame[0])
+        if k < 0 or k >= len(item.track.frame):
+            continue
+        x1, y1, x2, y2 = item.track.bbox[k]
+        if x1 <= center[0] <= x2 and y1 <= center[1] <= y2:
+            dist = (center[0] - (x1 + x2) / 2) ** 2 + (center[1] - (y1 + y2) / 2) ** 2
+            if best is None or dist < best[0]:
+                best = (dist, (item.conf[k], item.off[k], item.mot[k]))
+    return None if best is None else best[1]
+
+
+class S3fdTracker:
+    """Legacy S3FD face tracker (second detection pass), built lazily on first use.
+
+    Args:
+        device: Torch device for the detector.
+        detector: Existing ``SyncNetDetector`` to reuse instead of building one.
+    """
+
+    def __init__(self, device: str = "cuda", detector: Any | None = None) -> None:
+        self._device = device
+        self._detector = detector
+
+    @property
+    def detector(self) -> Any:
+        """The ``SyncNetDetector`` (built on first access)."""
+        if self._detector is None:
+            from eval.syncnet_detect import SyncNetDetector  # type: ignore[import-not-found]
+
+            self._detector = SyncNetDetector(
+                device=self._device, detect_results_dir=os.path.join(os.environ.get("TMPDIR", "/tmp"), "asd_det")
+            )
+        return self._detector
+
+    def tracks(self, frames: npt.NDArray[np.uint8], first: int, last: int) -> list[dict[str, Any]]:
+        """Detect and track S3FD faces over frames ``[first, last)``."""
+        dets = []
+        for f in range(first, last):
+            boxes = self.detector.s3f_detector.detect_faces(frames[f], conf_th=S3FD_CONF, scales=S3FD_SCALES)
+            dets.append([{"frame": f - first, "bbox": b[:-1].tolist(), "conf": b[-1]} for b in boxes])
+        tracks: list[dict[str, Any]] = self.detector.track_face(dets, min_track=8, min_face_size=30)
+        return tracks
 
 
 class ActiveSpeakerGate:
-    def __init__(self, device="cuda", syncnet_path="checkpoints/auxiliary/syncnet_v2.model", det=None, conf_th=None, win=50, stride=5):
-        from eval.syncnet import SyncNetEval
-        self.dev = device
-        self.sn = SyncNetEval(device=device)
-        self.sn.loadParameters(syncnet_path)
-        self.sn.__S__.eval()
-        self._det = det                                         # S3FD only built if the legacy tracks() path is used
-        self.conf_th = float(conf_th if conf_th is not None else os.environ.get("LIP_ASD_CONF", "2.7"))
-        self.off_max = int(os.environ.get("LIP_ASD_OFFMAX", "8"))
-        self.win, self.stride = win, stride
-        self._mf = None
-        self.bs = int(os.environ.get("LIP_ASD_BS", "64"))
-        self.static_th = float(os.environ.get("LIP_ASD_STATIC", "0.05"))
-        # (user): a still photo / frozen face must NOT get mouth movement -> static faces keep their original frames.
-        # LIP_ASD_STATIC_SYNC=1 restores the behaviour (sync static faces).
-        self.static_sync = str(os.environ.get("LIP_ASD_STATIC_SYNC", "0")).strip().lower() in ("1", "true", "on", "yes")
+    """Decides which tracked faces are speaking in the original video.
 
-    # ---- tracks of S3FD faces over frames [fa,fb)
+    Args:
+        scorer: SyncNet (or any :class:`TrackScorer`) used to score face tracks.
+        config: Decision thresholds.
+        tracker: Legacy S3FD tracker for :meth:`speaking`; built lazily when omitted.
+        crop_fn: Cuts the 224 px crops of a track (replaceable in tests).
+    """
+
+    def __init__(
+        self,
+        scorer: TrackScorer,
+        config: GateConfig,
+        tracker: S3fdTracker | None = None,
+        crop_fn: CropFn = face_crops,
+    ) -> None:
+        self.scorer = scorer
+        self.config = config
+        self.tracker = tracker or S3fdTracker()
+        self._crop = crop_fn
+
+    @classmethod
+    def load(cls, device: str = "cuda", detector: Any | None = None, conf_th: float | None = None) -> ActiveSpeakerGate:
+        """Build a gate backed by the SyncNet checkpoint on disk and thresholds from the environment."""
+        return cls(
+            SyncNetScorer(device=device),
+            GateConfig.from_env(conf_th),
+            S3fdTracker(device, detector),
+        )
+
     @property
-    def det(self):
-        if self._det is None:
-            from eval.syncnet_detect import SyncNetDetector
-            self._det = SyncNetDetector(device=self.dev, detect_results_dir=os.path.join(os.environ.get("TMPDIR", "/tmp"), "asd_det"))
-        return self._det
+    def conf_th(self) -> float:
+        """Confidence threshold in use."""
+        return self.config.conf_th
 
-    def tracks(self, frames, fa, fb):
-        dets = []
-        for f in range(fa, fb):
-            bb = self.det.s3f_detector.detect_faces(frames[f], conf_th=0.9, scales=[0.25])
-            dets.append([{"frame": f - fa, "bbox": b[:-1].tolist(), "conf": b[-1]} for b in bb])
-        return self.det.track_face(dets, min_track=8, min_face_size=30)
+    def speaking_tracks(
+        self,
+        frames: npt.NDArray[np.uint8],
+        wav: npt.NDArray[np.int16],
+        first: int,
+        last: int,
+        dets: Sequence[Sequence[Detection]],
+    ) -> list[SpeakingTrack]:
+        """Multi-face gate: score every face track independently against the ORIGINAL audio.
 
-    def _crops(self, tr, frames, fa, cs=0.4):
-        b = tr["bbox"]
-        s = signal.medfilt(np.maximum(b[:, 3] - b[:, 1], b[:, 2] - b[:, 0]) / 2, 13)
-        y = signal.medfilt((b[:, 1] + b[:, 3]) / 2, 13); x = signal.medfilt((b[:, 0] + b[:, 2]) / 2, 13)
+        Args:
+            frames: All chunk frames.
+            wav: Original audio of the chunk.
+            first: First absolute frame of the window.
+            last: End of the window (exclusive).
+            dets: Engine detections for frames ``first .. last - 1``.
+
+        Returns:
+            One decision per linked track, in absolute frame numbers.
+        """
         out = []
-        for k, fr in enumerate(tr["frame"]):
-            bs = s[k]; bsi = int(bs * (1 + 2 * cs))
-            fim = frames[fa + int(fr)]
-            H, W = fim.shape[:2]
-            my, mx = y[k] + bsi, x[k] + bsi
-            # same window as the padded-frame version, but slice the source first and pad only the slice
-            y0, y1 = int(my - bs) - bsi, int(my + bs * (1 + 2 * cs)) - bsi
-            x0, x1 = int(mx - bs * (1 + cs)) - bsi, int(mx + bs * (1 + cs)) - bsi
-            cy0, cy1, cx0, cx1 = max(0, y0), min(H, y1), max(0, x0), min(W, x1)
-            face = fim[cy0:cy1, cx0:cx1, ::-1]
-            if (cy0, cy1, cx0, cx1) != (y0, y1, x0, x1):
-                face = np.pad(face, ((cy0 - y0, y1 - cy1), (cx0 - x0, x1 - cx1), (0, 0)), "constant", constant_values=(110, 110))
-            out.append(cv2.resize(np.ascontiguousarray(face), (224, 224)))
-        return np.stack(out)
-
-    def motion(self, crops):
-        """Per-frame mouth-region inter-frame motion (mean abs gray diff, lower-centre of the 224 crop), smoothed over 25 frames.
-        A still photo / frozen frame scores ~0 even though SyncNet cannot score it."""
-        g = np.stack([cv2.cvtColor(np.ascontiguousarray(c[120:210, 50:174]), cv2.COLOR_BGR2GRAY) for c in crops]).astype(np.float32)
-        d = np.zeros(len(g), np.float32)
-        if len(g) > 1:
-            d[1:] = np.abs(g[1:] - g[:-1]).mean((1, 2)); d[0] = d[1]
-        k = min(25, len(d)) | 1
-        return signal.medfilt(d, k) if len(d) >= 3 else d
-
-    @torch.no_grad()
-    def score_track(self, crops, wav, t0_frame):
-        """crops [T,224,224,3] BGR; wav int16 16k mono of the whole chunk; t0_frame = chunk frame idx of crops[0].
-        Returns per-frame (conf, off) arrays length T (nan where undefined)."""
-        T = len(crops)
-        a0 = int(round(t0_frame / FPS * 16000)); a1 = a0 + int(round(T / FPS * 16000))
-        aud = wav[a0:a1]
-        nan = np.full(T, np.nan)
-        if T < 8 or len(aud) < 3200:
-            return nan, nan.copy()
-        key = (id(wav), len(wav), int(np.asarray(wav[::1600], np.int64).sum()))
-        if self._mf is None or self._mf[0] != key or self._mf[2] is not wav:      # strong ref: a recycled id() can never hit a stale cache              # one MFCC pass per chunk, sliced per track (4 mfcc frames / video frame)
-            self._mf = (key, np.ascontiguousarray(python_speech_features.mfcc(wav, 16000).T.astype(np.float32)), wav)
-        mfcc = self._mf[1][:, 4 * t0_frame: 4 * t0_frame + 4 * T]
-        cct = torch.from_numpy(mfcc[None, None])
-        im = torch.from_numpy(np.ascontiguousarray(crops)).to(self.dev)                # uint8 [T,224,224,3] on GPU
-        n = min(T, int(len(aud) // 640)) - 5
-        if n < 3:
-            return nan, nan.copy()
-        S = self.sn.__S__
-        fi, fa_ = [], []
-        for i in range(0, n, self.bs):
-            idx = range(i, min(n, i + self.bs))
-            win = torch.stack([im[v:v + 5] for v in idx]).permute(0, 4, 1, 2, 3).float()      # [B,3,5,224,224]
-            fi.append(S.forward_lip(win).cpu())
-            fa_.append(S.forward_aud(torch.cat([cct[:, :, :, v * 4:v * 4 + 20] for v in idx], 0).to(self.dev)).cpu())
-        D = _pdist(torch.cat(fi), torch.cat(fa_))                                    # [n,31]
-        conf = np.full(T, np.nan); off = np.full(T, np.nan); cnt = np.zeros(T)
-        acc = np.zeros(T); oacc = np.zeros(T)
-        w = min(self.win, n)
-        starts = list(range(0, max(1, n - w + 1), self.stride))
-        if starts[-1] + w < n:
-            starts.append(n - w)
-        for a in starts:
-            md = D[a:a + w].mean(0)
-            c = (md.median() - md.min()).item(); o = 15 - int(md.argmin())
-            acc[a:a + w + 4] += c; oacc[a:a + w + 4] += o; cnt[a:a + w + 4] += 1
-        m = cnt > 0
-        conf[m] = acc[m] / cnt[m]; off[m] = oacc[m] / cnt[m]
-        # r2: the last <=4 frames of a track have no full 5-frame lip window -> forward-fill the trailing undefined
-        # values so the tail inherits the last decision (otherwise gate_runs() sees a spurious boundary and cross-fades 50%).
-        last = np.where(m)[0]
-        if len(last) and last[-1] < T - 1:
-            conf[last[-1] + 1:] = conf[last[-1]]; off[last[-1] + 1:] = off[last[-1]]
-        return conf, off
-
-    def speaking_tracks(self, frames, wav, fa, fb, dets):
-        """multi-face gate. dets = engine detections for frames fa..fb-1 (see link_tracks). Every face track is scored
-        independently against the ORIGINAL audio; returns [{'tid','frame'(abs),'lm'(abs frame->lm3),'mask'(bool per track frame),'conf'}]."""
-        out = []
-        for tid, tr in enumerate(link_tracks(dets)):
-            cr = self._crops(tr, frames, fa)
-            conf, off = self.score_track(cr, wav, fa + int(tr["frame"][0]))
-            mot = self.motion(cr)
-            ok = (~np.isnan(conf)) & (conf >= self.conf_th) & (np.abs(np.nan_to_num(off, nan=99)) <= self.off_max)
-            mask = np.where(mot < self.static_th, bool(getattr(self, "static_sync", False)), ok)
-            out.append({"tid": tid, "frame": tr["frame"] + fa, "lm": {fa + k: v for k, v in tr["lm"].items()}, "mask": mask,
-                        "conf": conf, "off": off, "mot": mot, "bbox": tr["bbox"]})
+        for tid, track in enumerate(link_tracks(dets)):
+            crops = self._crop(track, frames, first)
+            conf, off = self.scorer.score_track(crops, wav, first + int(track.frame[0]))
+            motion = mouth_motion(crops)
+            out.append(
+                SpeakingTrack(
+                    tid=tid,
+                    frame=track.frame + first,
+                    lm={first + k: v for k, v in track.lm.items()},
+                    mask=speaking_mask(conf, off, motion, self.config),
+                    conf=conf,
+                    off=off,
+                    mot=motion,
+                    bbox=track.bbox,
+                )
+            )
         return out
 
-    def speaking(self, frames, wav, fa, fb, centers):
-        """centers: dict frame -> (x,y) of the face LatentSync would edit (nose point) or None.
-        Returns (mask bool[fb-fa], info). mask True = face is speaking in the ORIGINAL (keep lip-sync)."""
-        trs = self.tracks(frames, fa, fb)
+    def speaking(
+        self,
+        frames: npt.NDArray[np.uint8],
+        wav: npt.NDArray[np.int16],
+        first: int,
+        last: int,
+        centers: Mapping[int, Sequence[float]],
+    ) -> tuple[npt.NDArray[np.bool_], npt.NDArray[np.float64]]:
+        """Single-face gate: decide per frame whether the face LatentSync would edit is speaking.
+
+        Args:
+            frames: All chunk frames.
+            wav: Original audio of the chunk.
+            first: First absolute frame of the window.
+            last: End of the window (exclusive).
+            centers: Frame to ``(x, y)`` of the edited face's nose point.
+
+        Returns:
+            ``(mask, confs)`` over ``[first, last)``; mask True means keep the lip-sync.
+        """
         scored = []
-        for tr in trs:
-            cr = self._crops(tr, frames, fa)
-            conf, off = self.score_track(cr, wav, fa + int(tr["frame"][0]))
-            scored.append((tr, conf, off, self.motion(cr)))
-        mask = np.zeros(fb - fa, bool); confs = np.full(fb - fa, np.nan)
-        for f in range(fa, fb):
-            c = centers.get(f)
-            if c is None:
+        for track_dict in self.tracker.tracks(frames, first, last):
+            track = FaceTrack(frame=track_dict["frame"], bbox=track_dict["bbox"])
+            crops = self._crop(track, frames, first)
+            track_conf, track_off = self.scorer.score_track(crops, wav, first + int(track.frame[0]))
+            scored.append(ScoredTrack(track, track_conf, track_off, mouth_motion(crops)))
+        mask = np.zeros(last - first, bool)
+        confs = np.full(last - first, np.nan)
+        for f in range(first, last):
+            center = centers.get(f)
+            sample = None if center is None else nearest_track_sample(scored, f - first, center)
+            if sample is None:
                 continue
-            best = None
-            for tr, conf, off, mot in scored:
-                k = f - fa - int(tr["frame"][0])
-                if k < 0 or k >= len(tr["frame"]):
-                    continue
-                x1, y1, x2, y2 = tr["bbox"][k]
-                if x1 <= c[0] <= x2 and y1 <= c[1] <= y2:
-                    d = (c[0] - (x1 + x2) / 2) ** 2 + (c[1] - (y1 + y2) / 2) ** 2
-                    if best is None or d < best[0]:
-                        best = (d, conf[k], off[k], mot[k])
-            if best is not None:
-                confs[f - fa] = best[1]
-                if best[3] < self.static_th:                 # still photo / frozen mouth: keep original frames; LIP_ASD_STATIC_SYNC=1 -> sync
-                    mask[f - fa] = bool(getattr(self, "static_sync", False))
-                elif not np.isnan(best[1]):
-                    mask[f - fa] = best[1] >= self.conf_th and abs(best[2]) <= self.off_max
+            conf, off, motion = sample
+            confs[f - first] = conf
+            if motion < self.config.static_th:
+                mask[f - first] = self.config.static_sync
+            elif not np.isnan(conf):
+                mask[f - first] = conf >= self.config.conf_th and abs(off) <= self.config.off_max
         return mask, confs
-
-
-def _iou(a, b):
-    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0])); iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
-    inter = ix * iy
-    u = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
-    return inter / u if u > 0 else 0.0
-
-
-def link_tracks(dets, min_track=8, iou_th=0.5, max_gap=25, min_face=30):
-    """link the ENGINE's own per-frame face detections into tracks (replaces the second S3FD pass).
-    dets[k] (k = frame offset) = list of dict(bbox=[x1,y1,x2,y2], lm=lm3 or None). Returns
-    [{'frame': np.arange(k0..k1), 'bbox': interpolated [n,4], 'lm': {k: lm3}}]  (frame = offsets into dets)."""
-    active, done = [], []
-    for k, fd in enumerate(dets):
-        used = set()
-        for tr in sorted(active, key=lambda t: -t["last_k"]):
-            best, bj = iou_th, None
-            for j, d in enumerate(fd):
-                if j in used:
-                    continue
-                v = _iou(d["bbox"], tr["box"][-1])
-                if v > best:
-                    best, bj = v, j
-            if bj is not None and k - tr["last_k"] <= max_gap:
-                used.add(bj); tr["ks"].append(k); tr["box"].append(list(map(float, fd[bj]["bbox"]))); tr["last_k"] = k
-                tr["lm"][k] = fd[bj].get("lm")
-        for j, d in enumerate(fd):
-            if j not in used:
-                active.append({"ks": [k], "box": [list(map(float, d["bbox"]))], "last_k": k, "lm": {k: d.get("lm")}})
-        still = []
-        for tr in active:
-            (still if k - tr["last_k"] <= max_gap else done).append(tr)
-        active = still
-    out = []
-    for tr in done + active:
-        if len(tr["ks"]) <= min_track:
-            continue
-        ks = np.array(tr["ks"]); bb = np.array(tr["box"]); fi = np.arange(ks[0], ks[-1] + 1)
-        bi = np.stack([np.interp(fi, ks, bb[:, j]) for j in range(4)], 1)
-        if max(np.mean(bi[:, 2] - bi[:, 0]), np.mean(bi[:, 3] - bi[:, 1])) <= min_face:
-            continue
-        out.append({"frame": fi, "bbox": bi, "lm": tr["lm"]})
-    return sorted(out, key=lambda t: t["frame"][0])
-
-
-def cluster_runs(sub):
-    """Group face runs [(key, fa, fb, ...)] into time-DISJOINT clusters [cfa, cfb, [runs]]: faces speaking at the same time share one."""
-    clusters = []
-    for r in sorted(sub, key=lambda r: (r[1], r[2])):
-        if clusters and r[1] < clusters[-1][1]:
-            clusters[-1][1] = max(clusters[-1][1], r[2]); clusters[-1][2].append(r)
-        else:
-            clusters.append([r[1], r[2], [r]])
-    return clusters
-
-
-def gate_runs(runs_abs, speaking_fn, split_into_runs, fps=FPS, min_run_s=0.6, bridge=10, ramp=5):
-    """Pure gating logic. speaking_fn(fa,fb)->bool mask over [fa,fb). Returns (gated_runs, alpha{frame:weight<1}).
-    Frames outside gated runs keep original pixels; ramp frames at each boundary get a linear crossfade weight."""
-    alpha, gated = {}, []
-    for (fa, fb) in runs_abs:
-        mask = [bool(x) for x in speaking_fn(fa, fb)]
-        for (s_, e_) in split_into_runs(mask, fps, min_run_s, bridge):
-            r0, r1 = min(ramp, s_), min(ramp, (fb - fa) - e_)
-            for j in range(r0):
-                alpha[fa + s_ - r0 + j] = (j + 1) / (r0 + 1)
-            for j in range(r1):
-                alpha[fa + e_ + j] = 1 - (j + 1) / (r1 + 1)
-            gated.append((fa + s_ - r0, fa + e_ + r1))
-    return gated, alpha
-
-
-AsdGate = ActiveSpeakerGate      # original name, kept for callers

@@ -1,218 +1,272 @@
-#!/usr/bin/env python3
 """SunwAI supervisor (stdlib only). Runs in the foreground of one process or scheduler step.
- * keeps uvicorn (sunwai.server.app:create_app) alive: restarts only uvicorn, never the tunnel, so the public URL does not rotate
- * keeps the quick tunnel alive: adopts an existing cloudflared, restarts it only after the PUBLIC url failed 3x in a row,
-   and then writes the new URL to tunnel_url.txt (+ tunnel_url_history.txt)
- * probes every dependency each cycle (ASR, MT x5, IT2, TTS x10, sep, both lip workers) and writes
-   <ROOT>/supervisor_status.json atomically; logs every up/down transition.  `--once` prints the status and exits.
+
+* keeps uvicorn (``sunwai.server.app:create_app``) alive: restarts only uvicorn, never the tunnel, so the public URL
+  does not rotate;
+* keeps the quick tunnel alive: adopts an existing cloudflared, restarts it only after the PUBLIC url failed 3x in a
+  row, and then writes the new URL to ``tunnel_url.txt`` (+ ``tunnel_url_history.txt``);
+* probes every dependency each cycle (ASR, MT x5, IT2, TTS x10, sep, both lip workers) and writes
+  ``<ROOT>/supervisor_status.json`` atomically; logs every up/down transition. ``--once`` prints the status and exits.
+
 env: SUP_ROOT SUP_PORT SUP_NO_TUNNEL=1 SUP_APPDIR SUP_CLOUDFLARED
 """
-import json, os, signal, subprocess, sys, time, urllib.request, re
 
-ROOT = os.environ.get("SUP_ROOT", os.environ.get("DUB_ROOT", "./jobs"))
-PORT = int(os.environ.get("SUP_PORT", "18941"))
-APPDIR = os.environ.get("SUP_APPDIR", ".")
-CF = os.environ.get("SUP_CLOUDFLARED", "cloudflared")
-NO_TUNNEL = os.environ.get("SUP_NO_TUNNEL") == "1"
-UV_PAT = f"uvicorn --factory sunwai.server.app:create_app --host 127.0.0.1 --port {PORT}"
-CF_PAT = f"cloudflared tunnel --no-autoupdate --url http://127.0.0.1:{PORT}"
-def log(*a):
-    print(time.strftime("%F %T"), *a, flush=True)
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from typing import Any
+
+from sunwai.workers.common import log
+from sunwai.workers.procs import atomic_write, http_ok, kill_all, pids_matching, read_cmdline
+from sunwai.workers.services import ServiceMap, load_services
+
+CYCLE_S = 5
+TUNNEL_CHECK_S = 30
+FAILS_BEFORE_RESTART = 3
+UVICORN_GRACE_S = 60
+TUNNEL_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
-def load_services():
-    """{name: ["host:port",...]} from env SUP_SERVICES (JSON file, same format as the app's DUB_SERVICES) else
-    DEP_HOST (default 127.0.0.1) + built-in ports. No node is hard-coded."""
-    host = os.environ.get("DEP_HOST", "127.0.0.1")
-    ports = {"asr": [18931], "mt": [18933, 18981, 18982, 18983, 18984], "it2": [18936],
-             "tts": list(range(18990, 19000)), "sep": [18952]}
-    cfg = {k: [f"{host}:{p}" for p in v] for k, v in ports.items()}
-    lipm = os.environ.get("LIP_MODE", "proc")
-    if lipm not in ("proc", "none"):
-        lipm = "proc"
-    lipw = [w.strip() for w in os.environ.get("LIP_WORKERS", "wA,wB").split(",") if w.strip()] or ["wA", "wB"]
-    f = os.environ.get("SUP_SERVICES", os.environ.get("DUB_SERVICES", ""))
-    if f:
+@dataclass(frozen=True)
+class SupervisorConfig:
+    """Supervisor settings.
+
+    Attributes:
+        root: Job root holding logs and status files.
+        port: Port uvicorn listens on.
+        appdir: Working directory of uvicorn.
+        cloudflared: cloudflared executable.
+        no_tunnel: Do not manage a tunnel.
+    """
+
+    root: str
+    port: int
+    appdir: str
+    cloudflared: str
+    no_tunnel: bool
+
+    @classmethod
+    def from_env(cls) -> SupervisorConfig:
+        """Read the ``SUP_*`` variables (``SUP_ROOT`` falls back to ``DUB_ROOT``)."""
+        return cls(
+            root=os.environ.get("SUP_ROOT", os.environ.get("DUB_ROOT", "./jobs")),
+            port=int(os.environ.get("SUP_PORT", "18941")),
+            appdir=os.environ.get("SUP_APPDIR", "."),
+            cloudflared=os.environ.get("SUP_CLOUDFLARED", "cloudflared"),
+            no_tunnel=os.environ.get("SUP_NO_TUNNEL") == "1",
+        )
+
+    @property
+    def uvicorn_pattern(self) -> str:
+        """Command-line fragment identifying our uvicorn."""
+        return f"uvicorn --factory sunwai.server.app:create_app --host 127.0.0.1 --port {self.port}"
+
+    @property
+    def tunnel_pattern(self) -> str:
+        """Command-line fragment identifying our tunnel."""
+        return f"cloudflared tunnel --no-autoupdate --url http://127.0.0.1:{self.port}"
+
+
+class Supervisor:
+    """Keeps the app and its tunnel alive and reports dependency health.
+
+    Args:
+        config: Supervisor settings.
+        services: Dependencies to probe.
+    """
+
+    def __init__(self, config: SupervisorConfig, services: ServiceMap) -> None:
+        self.config = config
+        self.services = services
+        self._uvicorn_failures = 0
+        self._tunnel_failures = 0
+        self._uvicorn_grace_until = 0.0
+        self._last_tunnel_check = 0.0
+        self._previous_down: set[str] = set()
+
+    def read_url(self) -> str:
+        """Current public tunnel URL (empty when unknown)."""
         try:
-            j = json.load(open(f))
-            for k, v in j.items():
-                if isinstance(v, list) and k != "lip_workers":
-                    if v and all(":" in str(x) for x in v):
-                        cfg[k] = [str(x) for x in v]
-                    else:
-                        log(f"ignoring empty/invalid list for {k}")
-            lm, lw = j.get("lip_mode", lipm), j.get("lip_workers", lipw)
-            if lm in ("proc", "none"):
-                lipm = lm
-            if isinstance(lw, list) and lw and all(isinstance(x, str) and x for x in lw):
-                lipw = lw
-        except Exception as e:
-            log(f"cannot read services file {f}: {e!r}")
-    return cfg, lipm, lipw
-
-
-DEPS, LIP_MODE, LIP = load_services()
-CYCLE = 5
-
-
-def atomic(path, text):
-    tmp = f"{path}.tmp{os.getpid()}"
-    with open(tmp, "w") as f:
-        f.write(text); f.flush(); os.fsync(f.fileno())
-    os.replace(tmp, path)
-
-
-def http_ok(url, timeout=3.0):
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as r:
-            return r.status == 200
-    except Exception:
-        return False
-
-
-def pids_matching(pat):
-    out = []
-    me = os.getpid()
-    for p in os.listdir("/proc"):
-        if p.isdigit() and int(p) != me:
-            try:
-                cl = open(f"/proc/{p}/cmdline", "rb").read().replace(b"\0", b" ").decode("utf-8", "replace")
-            except OSError:
-                continue
-            if pat in cl and "supervisor_app2" not in cl:
-                out.append(int(p))
-    return out
-
-
-def kill_all(pids, grace=8):
-    for p in pids:
-        try: os.kill(p, signal.SIGTERM)
-        except OSError: pass
-    t0 = time.time()
-    while time.time() - t0 < grace and any(os.path.exists(f"/proc/{p}") for p in pids):
-        time.sleep(0.3)
-    for p in pids:
-        if os.path.exists(f"/proc/{p}"):
-            try: os.kill(p, signal.SIGKILL)
-            except OSError: pass
-
-
-def probe_deps():
-    res = {}
-    for n, ports in DEPS.items():
-        down = [p for p in ports if not http_ok(f"http://{p}/health", 1.5)]
-        res[n] = {"up": len(ports) - len(down), "total": len(ports), "down": down}
-    lip = {}
-    if LIP_MODE != "proc":
-        return res, {w: -1 for w in LIP}      # -1 = not checkable from this host
-    def cl(p):
-        try:
-            return open(f"/proc/{p}/cmdline", "rb").read().replace(b"\0", b" ").decode("utf-8", "replace") + " "
+            with open(f"{self.config.root}/tunnel_url.txt") as fh:
+                return fh.read().strip()
         except OSError:
             return ""
-    cands = pids_matching("sunwai.workers.lipsync")
-    for w in LIP:
-        ps = [p for p in cands if f"--id {w} " in cl(p)]
-        lip[w] = ps[0] if ps else None
-    return res, lip
 
+    def probe_deps(self) -> tuple[dict[str, dict[str, Any]], dict[str, int | None]]:
+        """Probe every service ``/health`` and find the lip-sync worker processes.
 
-def spawn_uvicorn():
-    py = sys.executable
-    env = dict(os.environ, DUB_ROOT=ROOT)
-    lf = open(f"{ROOT}/server.log", "ab")
-    p = subprocess.Popen([py, "-m", "uvicorn", "--factory", "sunwai.server.app:create_app", "--host", "127.0.0.1", "--port", str(PORT)],
-                         cwd=APPDIR, env=env, stdout=lf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                         start_new_session=True)
-    lf.close()
-    log(f"uvicorn spawned pid={p.pid}")
-    return p
+        Returns:
+            ``(deps, lip)``: per-service up/total/down endpoints, and worker id to pid (None = down, -1 = not
+            checkable from this host).
+        """
+        deps = {}
+        for name, endpoints in self.services.deps.items():
+            down = [e for e in endpoints if not http_ok(f"http://{e}/health", 1.5)]
+            deps[name] = {"up": len(endpoints) - len(down), "total": len(endpoints), "down": down}
+        if self.services.lip_mode != "proc":
+            return deps, {w: -1 for w in self.services.lip_workers}
+        pids = pids_matching("sunwai.workers.lipsync")
+        lip: dict[str, int | None] = {}
+        for worker in self.services.lip_workers:
+            matching = [p for p in pids if f"--id {worker} " in read_cmdline(p) + " "]
+            lip[worker] = matching[0] if matching else None
+        return deps, lip
 
+    def spawn_uvicorn(self) -> None:
+        """Start uvicorn detached, logging to ``server.log``."""
+        cmd = [sys.executable, "-m", "uvicorn", "--factory", "sunwai.server.app:create_app", "--host", "127.0.0.1"]
+        with open(f"{self.config.root}/server.log", "ab") as logfile:
+            proc = subprocess.Popen(
+                [*cmd, "--port", str(self.config.port)],
+                cwd=self.config.appdir,
+                env=dict(os.environ, DUB_ROOT=self.config.root),
+                stdout=logfile,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        log(f"uvicorn spawned pid={proc.pid}")
 
-def spawn_tunnel():
-    tl = f"{ROOT}/tunnel.log"
-    open(tl, "w").close()
-    lf = open(tl, "ab")
-    p = subprocess.Popen([CF, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{PORT}"],
-                         stdout=lf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
-    lf.close()
-    url = ""
-    for _ in range(40):
-        time.sleep(2)
-        m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", open(tl, errors="replace").read())
-        if m:
-            url = m.group(0); break
-    log(f"tunnel spawned pid={p.pid} url={url}")
-    if url:
-        atomic(f"{ROOT}/tunnel_url.txt", url + "\n")
-        with open(f"{ROOT}/tunnel_url_history.txt", "a") as f:
-            f.write(f"{time.strftime('%F %T')} {url}\n")
-    return url
+    def spawn_tunnel(self) -> str:
+        """Start a quick tunnel, wait for its URL and record it; returns the URL ('' if none appeared)."""
+        tunnel_log = f"{self.config.root}/tunnel.log"
+        open(tunnel_log, "w").close()
+        with open(tunnel_log, "ab") as logfile:
+            proc = subprocess.Popen(
+                [self.config.cloudflared, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{self.config.port}"],
+                stdout=logfile,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        url = ""
+        for _ in range(40):
+            time.sleep(2)
+            with open(tunnel_log, errors="replace") as fh:
+                match = TUNNEL_URL_RE.search(fh.read())
+            if match:
+                url = match.group(0)
+                break
+        log(f"tunnel spawned pid={proc.pid} url={url}")
+        if url:
+            atomic_write(f"{self.config.root}/tunnel_url.txt", url + "\n")
+            with open(f"{self.config.root}/tunnel_url_history.txt", "a") as fh:
+                fh.write(f"{time.strftime('%F %T')} {url}\n")
+        return url
 
-
-def read_url():
-    try:
-        return open(f"{ROOT}/tunnel_url.txt").read().strip()
-    except OSError:
-        return ""
-
-
-def main():
-    os.makedirs(ROOT, exist_ok=True)
-    if "--once" in sys.argv:
-        d, l = probe_deps()
-        print(json.dumps({"deps": d, "lip": l, "uvicorn": pids_matching(UV_PAT), "tunnel": pids_matching(CF_PAT),
-                          "url": read_url()}, indent=1))
-        return
-    log(f"supervisor start pid={os.getpid()} root={ROOT} port={PORT} tunnel={'off' if NO_TUNNEL else 'on'}")
-    uv_fail = tn_fail = 0
-    uv_grace = 0.0
-    last_tn = 0.0
-    prev_down = set()
-    while True:
-        t = time.time()
-        # --- uvicorn
-        uvp = pids_matching(UV_PAT)
-        healthy = http_ok(f"http://127.0.0.1:{PORT}/health", 4.0)
+    def _check_uvicorn(self, now: float) -> tuple[bool, list[int]]:
+        """Restart uvicorn when missing or unhealthy 3x in a row; returns ``(healthy, pids)``."""
+        pids = pids_matching(self.config.uvicorn_pattern)
+        healthy = http_ok(f"http://127.0.0.1:{self.config.port}/health", 4.0)
         if healthy:
-            uv_fail = 0
-        elif not uvp:
+            self._uvicorn_failures = 0
+        elif not pids:
             log("uvicorn not running -> start")
-            spawn_uvicorn(); uv_grace = t + 60; uv_fail = 0
-        elif t > uv_grace:
-            uv_fail += 1
-            if uv_fail >= 3:
-                log(f"uvicorn unhealthy x{uv_fail} -> restart (pids {uvp})")
-                kill_all(uvp); spawn_uvicorn(); uv_grace = time.time() + 60; uv_fail = 0
-        # --- tunnel (public url checked every 30 s)
-        if not NO_TUNNEL and t - last_tn >= 30:
-            last_tn = t
-            url = read_url()
-            if url and http_ok(url + "/health", 10.0):
-                tn_fail = 0
-            elif not url and not pids_matching(CF_PAT):
-                log("no tunnel -> start"); spawn_tunnel(); tn_fail = 0
-            else:
-                tn_fail += 1
-                log(f"public url check failed x{tn_fail} ({url})")
-                if tn_fail >= 3:
-                    log("restarting tunnel (URL will rotate)")
-                    kill_all(pids_matching(CF_PAT)); new = spawn_tunnel(); tn_fail = 0
-                    log(f"NEW PUBLIC URL {new}")
-        # --- dependencies
-        deps, lip = probe_deps()
-        down = {f"{n}:{p}" for n, x in deps.items() for p in x["down"]} | {f"lip:{w}" for w, p in lip.items() if p is None}
-        for x in sorted(down - prev_down): log("DEP DOWN", x)
-        for x in sorted(prev_down - down): log("DEP UP", x)
-        prev_down = down
-        status = {"time": time.strftime("%F %T"), "ready": healthy and not down, "app_healthy": healthy,
-                  "uvicorn_pids": uvp, "tunnel_pids": pids_matching(CF_PAT), "url": read_url(),
-                  "tunnel_fail": tn_fail, "deps": deps, "lip": lip, "down": sorted(down)}
+            self.spawn_uvicorn()
+            self._uvicorn_grace_until = now + UVICORN_GRACE_S
+            self._uvicorn_failures = 0
+        elif now > self._uvicorn_grace_until:
+            self._uvicorn_failures += 1
+            if self._uvicorn_failures >= FAILS_BEFORE_RESTART:
+                log(f"uvicorn unhealthy x{self._uvicorn_failures} -> restart (pids {pids})")
+                kill_all(pids)
+                self.spawn_uvicorn()
+                self._uvicorn_grace_until = time.time() + UVICORN_GRACE_S
+                self._uvicorn_failures = 0
+        return healthy, pids
+
+    def _check_tunnel(self, now: float) -> None:
+        """Check the public URL every 30 s; restart the tunnel (rotating the URL) after 3 failures."""
+        if self.config.no_tunnel or now - self._last_tunnel_check < TUNNEL_CHECK_S:
+            return
+        self._last_tunnel_check = now
+        url = self.read_url()
+        if url and http_ok(url + "/health", 10.0):
+            self._tunnel_failures = 0
+        elif not url and not pids_matching(self.config.tunnel_pattern):
+            log("no tunnel -> start")
+            self.spawn_tunnel()
+            self._tunnel_failures = 0
+        else:
+            self._tunnel_failures += 1
+            log(f"public url check failed x{self._tunnel_failures} ({url})")
+            if self._tunnel_failures >= FAILS_BEFORE_RESTART:
+                log("restarting tunnel (URL will rotate)")
+                kill_all(pids_matching(self.config.tunnel_pattern))
+                new_url = self.spawn_tunnel()
+                self._tunnel_failures = 0
+                log(f"NEW PUBLIC URL {new_url}")
+
+    def run_cycle(self) -> None:
+        """One supervision cycle: app, tunnel, dependencies, status file."""
+        now = time.time()
+        healthy, uvicorn_pids = self._check_uvicorn(now)
+        self._check_tunnel(now)
+        deps, lip = self.probe_deps()
+        down = {f"{n}:{e}" for n, info in deps.items() for e in info["down"]} | {
+            f"lip:{w}" for w, pid in lip.items() if pid is None
+        }
+        for item in sorted(down - self._previous_down):
+            log("DEP DOWN", item)
+        for item in sorted(self._previous_down - down):
+            log("DEP UP", item)
+        self._previous_down = down
+        status = {
+            "time": time.strftime("%F %T"),
+            "ready": healthy and not down,
+            "app_healthy": healthy,
+            "uvicorn_pids": uvicorn_pids,
+            "tunnel_pids": pids_matching(self.config.tunnel_pattern),
+            "url": self.read_url(),
+            "tunnel_fail": self._tunnel_failures,
+            "deps": deps,
+            "lip": lip,
+            "down": sorted(down),
+        }
         try:
-            atomic(f"{ROOT}/supervisor_status.json", json.dumps(status, indent=1))
+            atomic_write(f"{self.config.root}/supervisor_status.json", json.dumps(status, indent=1))
         except OSError:
             pass
-        time.sleep(max(0.5, CYCLE - (time.time() - t)))
+
+    def run(self) -> None:
+        """Supervise forever."""
+        cfg = self.config
+        log(
+            f"supervisor start pid={os.getpid()} root={cfg.root} port={cfg.port} "
+            f"tunnel={'off' if cfg.no_tunnel else 'on'}"
+        )
+        while True:
+            started = time.time()
+            self.run_cycle()
+            time.sleep(max(0.5, CYCLE_S - (time.time() - started)))
+
+    def print_status(self) -> None:
+        """Print the current dependency and process status as JSON."""
+        deps, lip = self.probe_deps()
+        status = {
+            "deps": deps,
+            "lip": lip,
+            "uvicorn": pids_matching(self.config.uvicorn_pattern),
+            "tunnel": pids_matching(self.config.tunnel_pattern),
+            "url": self.read_url(),
+        }
+        print(json.dumps(status, indent=1))
+
+
+def main() -> None:
+    """Command line entry point (``--once`` prints the status and exits)."""
+    config = SupervisorConfig.from_env()
+    os.makedirs(config.root, exist_ok=True)
+    supervisor = Supervisor(config, load_services())
+    if "--once" in sys.argv:
+        supervisor.print_status()
+    else:
+        supervisor.run()
 
 
 if __name__ == "__main__":

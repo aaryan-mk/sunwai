@@ -7,6 +7,7 @@ import os, sys, json, subprocess, textwrap, time, shutil, tempfile, wave
 import numpy as np
 
 PL, PP = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
+os.environ["CASES_DIR"] = os.path.dirname(os.path.abspath(__file__))  # inherited by every child process
 WD = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else tempfile.mkdtemp(prefix="g066_")
 os.makedirs(WD, exist_ok=True)
 PY = sys.executable
@@ -20,6 +21,8 @@ def run(code, env=None, timeout=60, cwd=None):
     pre = (
         "import sys,os,importlib.util,json\n"
         "def load(path,name):\n"
+        "    if path.endswith('planner.py'):\n"
+        "        sys.path.insert(0, os.environ['CASES_DIR']); import _planner_facade; return _planner_facade.load_planner()\n"
         "    sys.path.insert(0, os.path.dirname(path))\n"
         "    sp=importlib.util.spec_from_file_location(name,path); m=importlib.util.module_from_spec(sp); sys.modules[name]=m; sp.loader.exec_module(m); return m\n"
     )
@@ -381,6 +384,8 @@ check(
 pre_ = (
     "import sys,os,importlib.util,json\n"
     "def load(path,name):\n"
+    "    if path.endswith('planner.py'):\n"
+    "        sys.path.insert(0, os.environ['CASES_DIR']); import _planner_facade; return _planner_facade.load_planner()\n"
     "    sys.path.insert(0, os.path.dirname(path))\n"
     "    sp=importlib.util.spec_from_file_location(name,path); m=importlib.util.module_from_spec(sp); sys.modules[name]=m; sp.loader.exec_module(m); return m\n"
 )
@@ -409,6 +414,8 @@ for _ in range(3):
     pre = (
         "import sys,os,importlib.util,json\n"
         "def load(path,name):\n"
+        "    if path.endswith('planner.py'):\n"
+        "        sys.path.insert(0, os.environ['CASES_DIR']); import _planner_facade; return _planner_facade.load_planner()\n"
         "    sys.path.insert(0, os.path.dirname(path))\n"
         "    sp=importlib.util.spec_from_file_location(name,path); m=importlib.util.module_from_spec(sp); sys.modules[name]=m; sp.loader.exec_module(m); return m\n"
     )
