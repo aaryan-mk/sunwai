@@ -36,6 +36,15 @@ def _source_lang(out_dir):
 # Stage 5: Speakers (ECAPA + clustering + gender)
 # ---------------------------------------------------------------------------
 def stage_speakers(out_dir: Path, slots: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Assign a speaker index and gender to every slot using the job's speaker map or local clustering.
+
+    Args:
+        out_dir: Chunk directory.
+        slots: Slot records from the slots stage.
+
+    Returns:
+        The speaker table, also written to ``speakers.json``.
+    """
     sp_path = out_dir / "speakers.json"
     if sp_path.exists() and slots:
         log.info("Stage speakers: cached")

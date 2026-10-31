@@ -25,6 +25,7 @@ from sunwai.media.audio import save_wav_stereo
 # Stage 9: Separation (Demucs)
 # ---------------------------------------------------------------------------
 def stage_separate(out_dir: Path):
+    """Separate the 44.1 kHz source into vocals and background (GPU service, CPU fallback) and cache the stems."""
     bed = out_dir / "bed.wav"
     voc = out_dir / "vocals.wav"
     if bed.exists() and voc.exists():

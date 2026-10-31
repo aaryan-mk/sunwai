@@ -18,6 +18,7 @@ from sunwai.media.ffmpeg import run_ffmpeg
 
 
 def stage_audio(out_dir: Path):
+    """Extract ``src16k.wav`` (mono 16 kHz) and ``src44k.wav`` (stereo 44.1 kHz) from ``src.mp4``."""
     w16 = out_dir / "src16k.wav"
     w44 = out_dir / "src44k.wav"
     src_mp4 = out_dir / "src.mp4"

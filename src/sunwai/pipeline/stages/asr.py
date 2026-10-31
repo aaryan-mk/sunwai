@@ -87,6 +87,16 @@ def dedup_boundary_words(segments, pad_per_word_s: float = 0.15, kmax: int = 6):
 
 
 def stage_asr(args, out_dir: Path, slots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Transcribe every slot and deduplicate words repeated across slot boundaries.
+
+    Args:
+        args: Chunk arguments (source language hint).
+        out_dir: Chunk directory.
+        slots: Slot records from the slots stage.
+
+    Returns:
+        Segment records with ``src_text``; slots whose ASR failed carry a fallback marker.
+    """
     seg_path = out_dir / "segments.json"
     prior = None
     todo = slots

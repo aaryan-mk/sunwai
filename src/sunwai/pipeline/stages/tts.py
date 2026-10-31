@@ -44,6 +44,18 @@ from sunwai.synthesis.splitting import _MISSING, _SplitRestoreFailed, _split_sem
 
 
 def stage_tts(args, out_dir: Path, segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Synthesise every segment and write ``tts/<id>.wav`` plus placement data.
+
+    Applies sentence splitting for long lines, pause stretching, the runaway repair ladder, caching by fingerprint, tempo fitting and per-segment fallbacks.
+
+    Args:
+        args: Chunk arguments (target language).
+        out_dir: Chunk directory.
+        segments: Segment records with the final spoken text.
+
+    Returns:
+        The same records annotated with tempo, ratio and error/fallback markers.
+    """
     voice_require_speakers(segments)
     tts_dir = out_dir / "tts"
     tts_dir.mkdir(exist_ok=True)

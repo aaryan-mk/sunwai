@@ -48,6 +48,7 @@ def _safe_cleanup(cid, tts_dir, made) -> None:
 # Timing
 # ---------------------------------------------------------------------------
 def load_timings(out_dir: Path) -> Dict[str, float]:
+    """Return the per-stage timings recorded for the chunk (empty when none)."""
     p = out_dir / "timings.json"
     if p.exists():
         with open(p, encoding="utf-8") as f:
@@ -56,6 +57,7 @@ def load_timings(out_dir: Path) -> Dict[str, float]:
 
 
 def save_timing(out_dir: Path, stage: str, secs: float):
+    """Add ``secs`` to the timing of ``stage`` in the chunk's ``timings.json`` (atomic write)."""
     t = load_timings(out_dir)
     t[stage] = round(t.get(stage, 0.0) + secs, 3)
     atomic_write_json(out_dir / "timings.json", t, indent=2)

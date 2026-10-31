@@ -22,6 +22,7 @@ from sunwai.media.audio import concat_wav_bytes, trim_wav_bytes, wav_duration
 # Kill switch PIPE_RUNAWAY_LADDER=0.
 # ---------------------------------------------------------------------------
 def runaway_ladder_on() -> bool:
+    """Return True unless the runaway repair ladder is disabled with ``PIPE_RUNAWAY_LADDER=0``."""
     return os.environ.get("PIPE_RUNAWAY_LADDER", "1").strip().lower() not in ("0", "false", "no", "off", "n", "f")
 
 

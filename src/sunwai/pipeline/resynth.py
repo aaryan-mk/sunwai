@@ -26,6 +26,10 @@ from sunwai.pipeline.voices import pick_voice, voice_require_speakers
 # Resynth
 # ---------------------------------------------------------------------------
 def do_resynth(args, out_dir: Path):
+    """Re-synthesise one edited line (``args.resynth``) with ``args.text`` and remix the chunk.
+
+    Only the edited segment and the downstream mix are recomputed.
+    """
     seg_path = out_dir / "segments.json"
     if not seg_path.exists():
         raise RuntimeError("segments.json not found; run full pipeline first")

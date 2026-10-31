@@ -42,6 +42,7 @@ class LLMError(RuntimeError):
 
 
 def provider():
+    """Return the configured LLM provider, ``openrouter`` (default) or ``gemini``."""
     p = (os.environ.get("LLM_PROVIDER") or "openrouter").strip().lower()
     if p not in ("gemini", "openrouter"):
         raise LLMError(f"LLM_PROVIDER must be openrouter|gemini, got {p!r}")
@@ -55,6 +56,7 @@ def _default_model(use_case):
 
 
 def resolve_model(use_case, prov=None):
+    """Return the model id for ``use_case`` (``chat``, ``fit`` or ``translate``) under the active provider."""
     prov = prov or provider()
     ov = (os.environ.get("LLM_MODEL_" + use_case.upper()) or "").strip()
     if ov:
@@ -71,6 +73,7 @@ def _read_file(path):
 
 
 def openrouter_key():
+    """Return the OpenRouter key from the environment or its key file; raises :class:`LLMError` when absent."""
     k = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
     if k:
         return k
@@ -86,6 +89,7 @@ def openrouter_key():
 
 
 def gemini_key():
+    """Return the Gemini key from the environment or its key file; raises :class:`LLMError` when absent."""
     k = (os.environ.get("GEMINI_API_KEY") or "").strip()
     if k:
         return k

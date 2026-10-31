@@ -71,6 +71,17 @@ def _with_retries(fn, *, retries: int = None, base_delay: float = 1.0, deadline:
 
 def bodhan_asr(session: requests.Session, key: str, wav_path: Path,
                language: Optional[str]) -> str:
+    """Transcribe ``wav_path`` with the ASR service.
+
+    Args:
+        session: HTTP session to use.
+        key: Bearer key for the ASR service.
+        wav_path: WAV file to transcribe.
+        language: Optional language hint.
+
+    Returns:
+        The stripped transcript (empty when the service returns none).
+    """
     def do(timeout=120):
         with open(wav_path, "rb") as f:
             files = {"file": ("seg.wav", f, "audio/wav")}
@@ -90,6 +101,25 @@ def bodhan_asr(session: requests.Session, key: str, wav_path: Path,
 
 def bodhan_mt(session: requests.Session, key: str, text: str, lang: str, *, deadline: float = None,
               call_timeout: float = 120.0, retries: int = None, t_end: float = None, budget=None) -> str:
+    """Translate ``text`` into ``lang`` with the MT service.
+
+    Args:
+        session: HTTP session to use.
+        key: Bearer key for the MT service.
+        text: Source text.
+        lang: Target language code.
+        deadline: Overall time budget for retries, seconds.
+        call_timeout: Timeout of a single call, seconds.
+        retries: Maximum retries (service default when ``None``).
+        t_end: Absolute ``time.time()`` after which no call starts.
+        budget: Optional recovery budget that is credited for queue waits.
+
+    Returns:
+        The stripped translation.
+
+    Raises:
+        RuntimeError: Retries or the time budget were exhausted.
+    """
     def do(timeout=120):
         payload = {
             "model": "indic-translate",
@@ -126,6 +156,19 @@ def bodhan_mt(session: requests.Session, key: str, text: str, lang: str, *, dead
 
 def bodhan_tts(session: requests.Session, key: str, text: str, lang: str,
                voice: str, style=None) -> bytes:
+    """Synthesise ``text`` with the TTS service.
+
+    Args:
+        session: HTTP session to use.
+        key: Bearer key for the TTS service.
+        text: Text to speak.
+        lang: Language code.
+        voice: Voice name.
+        style: Optional delivery style passed to the model.
+
+    Returns:
+        WAV (PCM16, 24 kHz, mono) bytes.
+    """
     def do(timeout=120):
         import json as _json
         payload = {

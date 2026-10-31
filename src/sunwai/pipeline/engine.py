@@ -300,6 +300,7 @@ log = logging.getLogger(__name__)
 # Summary
 # ---------------------------------------------------------------------------
 def print_summary(args, out_dir: Path, segments: List[Dict[str, Any]], out_mp4: Path):
+    """Print a one-screen summary of a finished chunk (counts, speakers, timings)."""
     n = len(segments)
     spk_g: Dict[int, str] = {}
     for s in segments:
@@ -322,6 +323,7 @@ def print_summary(args, out_dir: Path, segments: List[Dict[str, Any]], out_mp4: 
 
 
 def main():
+    """Command line entry point: dub one chunk, or re-synthesise one line with ``--resynth``."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
     parser.add_argument("--lang", required=True, choices=sorted(LANGS))

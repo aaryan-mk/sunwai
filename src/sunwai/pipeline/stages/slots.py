@@ -32,6 +32,15 @@ CROP_HALFGAP = os.environ.get("CROP_HALFGAP", "1").strip().lower() not in ("0", 
 
 
 def stage_slots(out_dir: Path, vad: List[Dict[str, float]]) -> List[Dict[str, Any]]:
+    """Build bounded speech slots from VAD intervals (merge, split at speaker changes, force-cut long runs).
+
+    Args:
+        out_dir: Chunk directory.
+        vad: Speech intervals from the VAD stage.
+
+    Returns:
+        Slot records, also written to ``slots.json``.
+    """
     slot_path = out_dir / "slots.json"
     if slot_path.exists():
         log.info("Stage slots: cached")

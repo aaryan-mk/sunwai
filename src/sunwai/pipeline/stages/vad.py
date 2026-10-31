@@ -23,6 +23,11 @@ from sunwai.pipeline.support.storage import atomic_write_json
 # Stage 3: VAD (Silero)
 # ---------------------------------------------------------------------------
 def stage_vad(out_dir: Path) -> List[Dict[str, float]]:
+    """Detect speech intervals in ``src16k.wav`` and cache them in ``vad.json``.
+
+    Returns:
+        A list of ``{"start": s, "end": s}`` intervals in seconds.
+    """
     vad_path = out_dir / "vad.json"
     if vad_path.exists():
         log.info("Stage vad: cached")

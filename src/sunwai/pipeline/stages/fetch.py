@@ -21,6 +21,15 @@ from sunwai.media.frames import _owned_frames_by_ts
 
 
 def stage_fetch(args, out_dir: Path) -> Dict[str, Any]:
+    """Obtain the exact source window as ``src.mp4`` in ``out_dir`` and write ``meta.json``.
+
+    Args:
+        args: Chunk arguments (``url``, ``start``, ``dur``).
+        out_dir: Chunk directory.
+
+    Returns:
+        The metadata record (also written to ``meta.json``).
+    """
     meta_path = out_dir / "meta.json"
     src_mp4 = out_dir / "src.mp4"
 

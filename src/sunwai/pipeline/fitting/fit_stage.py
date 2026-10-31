@@ -94,6 +94,7 @@ def _atomic_json(path, obj, **kw):
 
 
 def graphemes(text):
+    """Return the number of letter and digit graphemes in ``text``."""
     return sum(1 for g in _G.findall(text) if regex.search(r"[\p{L}\p{N}]", g))
 
 
@@ -131,6 +132,7 @@ SRC_NAMES.update({"or": "Odia", "as": "Assamese"})
 
 
 def guard_enabled():
+    """Return True unless the meaning guard is disabled with ``FIT_MEANING_GUARD=0``."""
     return os.environ.get("FIT_MEANING_GUARD", "1").strip().lower() not in ("0", "false", "off", "no")
 
 
@@ -666,6 +668,16 @@ def fit_voice_factor(lang, voice):
 
 
 def stage_fit(args, out_dir: Path, segments):
+    """Rewrite translated lines so their speech fits the slot (LLM, guarded) and cache budgets in ``fit.json``.
+
+    Args:
+        args: Chunk arguments (language, ``pick_voice`` for per-voice speaking rates).
+        out_dir: Chunk directory.
+        segments: Segment records with ``tgt_text``.
+
+    Returns:
+        The same records with ``tgt_text`` fitted (unchanged when a rewrite is rejected).
+    """
     cache = out_dir / "fit.json"
     fitted = None
     if cache.exists():

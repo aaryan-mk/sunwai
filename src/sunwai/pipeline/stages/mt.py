@@ -29,6 +29,7 @@ from sunwai.pipeline.support.storage import atomic_write_json
 
 
 def routed_mt(session, key, text, lang, src):
+    """Translate one string, routing English to the LLM, IndicTrans2 targets to the mirror and the rest to Bodhan MT."""
     if lang == "en":
         from sunwai.clients import llm as llm_client
         return llm_client.generate_text("Translate the following text into natural spoken English. Output only the translation.\n" + text,
@@ -272,6 +273,16 @@ def _mt_script_recover_inner(session, key, text: str, lang: str, src: str, sid, 
 
 
 def stage_mt(args, out_dir: Path, segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Translate every non-edited segment into ``args.lang`` and record failures per segment.
+
+    Args:
+        args: Chunk arguments (target language).
+        out_dir: Chunk directory.
+        segments: Segment records with ``src_text``.
+
+    Returns:
+        The same records with ``tgt_text`` filled in.
+    """
     keys = load_keys()
     mt_key = keys["mt"]
     src = _source_lang(out_dir)

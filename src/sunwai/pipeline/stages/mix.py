@@ -31,6 +31,18 @@ from sunwai.pipeline.support.storage import atomic_write_json
 
 
 def stage_mix(args, out_dir: Path, segments: List[Dict[str, Any]]):
+    """Mix the synthesised speech into the chunk and mux the dubbed video.
+
+    Aligns pauses, ducks the background, preserves overlaps and events, applies the limiter and writes ``dub.wav`` and the dubbed MP4.
+
+    Args:
+        args: Chunk arguments (language, window).
+        out_dir: Chunk directory.
+        segments: Synthesised segment records.
+
+    Returns:
+        Path of the dubbed MP4.
+    """
     out_wav = out_dir / "dub.wav"
     out_mp4 = out_dir / f"dub_{args.lang}.mp4"
 

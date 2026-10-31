@@ -16,6 +16,7 @@ from sunwai.clients.service_endpoints import TTS_MODEL
 
 
 def tts_fingerprint(text: str, voice: str, lang: str, style=None) -> str:
+    """Return a fingerprint of everything that changes the synthesised audio (text, voice, language, style, model)."""
     model = TTS_MODEL
     parts = [text, voice, lang, model] + ([style] if style else [])   # no style => fingerprint unchanged
     return hashlib.sha1("\x1f".join(parts).encode("utf-8")).hexdigest()
@@ -34,6 +35,7 @@ def write_raw_tts(raw_path: Path, wav_bytes: bytes, fp: str) -> None:
 
 
 def raw_tts_fresh(raw_path: Path, fp: str) -> bool:
+    """Return True when ``raw_path`` exists and was produced for fingerprint ``fp``."""
     try:
         return raw_path.exists() and raw_path.with_name(raw_path.stem + ".fp").read_text().strip() == fp
     except Exception:

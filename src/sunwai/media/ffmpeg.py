@@ -17,6 +17,18 @@ from sunwai.pipeline.support.env import _env_num
 # Audio IO helpers
 # ---------------------------------------------------------------------------
 def run_ffmpeg(args: List[str], *, capture: bool = True, check: bool = True):
+    """Run ffmpeg with the given arguments (quiet, non-interactive, bounded by ``PIPE_FFMPEG_TIMEOUT``).
+
+    When the output path equals an input path, the result is written to a temporary file and moved over it.
+
+    Args:
+        args: ffmpeg arguments after the common flags.
+        capture: Capture stdout and stderr.
+        check: Raise on a non-zero exit status.
+
+    Returns:
+        The completed process.
+    """
     import subprocess
     inputs = {str(args[i + 1]) for i, a in enumerate(args[:-1]) if a == "-i"}
     out = str(args[-1])

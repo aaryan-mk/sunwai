@@ -110,6 +110,15 @@ def voice_require_speakers(segments) -> None:
 
 
 def pick_voice(lang: str, gender: str, speaker_idx: int) -> str:
+    """Return the voice for a speaker.
+
+    Uses the job's voice plan when the job is planned, otherwise the legacy per-language gender mapping.
+
+    Args:
+        lang: Target language code.
+        gender: ``"male"``, ``"female"`` or ``"unknown"``.
+        speaker_idx: Speaker index within the job.
+    """
     if _PLANNED_VOICES is not None:
         v = _PLANNED_VOICES.get(str(speaker_idx))
         if not v:

@@ -15,11 +15,13 @@ log = logging.getLogger(__name__)
 
 
 def load_wav_mono(path: Path, sr: int = 16000) -> np.ndarray:
+    """Load ``path`` as mono float32 at ``sr`` Hz."""
     y, _ = librosa.load(str(path), sr=sr, mono=True, dtype=np.float32)
     return y
 
 
 def load_wav_stereo(path: Path, sr: int = 44100) -> np.ndarray:
+    """Load ``path`` as float32 with shape (channels, samples) at ``sr`` Hz."""
     y, _ = librosa.load(str(path), sr=sr, mono=False, dtype=np.float32)
     if y.ndim == 1:
         y = np.stack([y, y])
@@ -27,11 +29,13 @@ def load_wav_stereo(path: Path, sr: int = 44100) -> np.ndarray:
 
 
 def save_wav_mono(path: Path, y: np.ndarray, sr: int):
+    """Write mono samples ``y`` to ``path`` at ``sr`` Hz."""
     import soundfile as sf
     sf.write(str(path), y, sr)
 
 
 def save_wav_stereo(path: Path, y: np.ndarray, sr: int):
+    """Write (channels, samples) audio ``y`` to ``path`` at ``sr`` Hz."""
     import soundfile as sf
     if y.ndim == 1:
         y = np.stack([y, y], axis=1)
@@ -75,11 +79,16 @@ def _wav_bytes(sr: int, ch: int, sw: int, pcm: bytes) -> bytes:
 
 
 def wav_duration(wb: bytes) -> float:
+    """Return the duration in seconds of WAV bytes ``wb``."""
     sr, ch, sw, pcm = _wav_pcm(wb)
     return len(pcm) / (ch * sw) / sr
 
 
 def concat_wav_bytes(wbs: List[bytes], gap_s: float = 0.12) -> bytes:
+    """Concatenate WAV byte strings with ``gap_s`` seconds of silence between them.
+
+    All inputs must share sample rate, channel count and sample width.
+    """
     sr, ch, sw, first = _wav_pcm(wbs[0])
     gap = b"\x00" * (int(gap_s * sr) * ch * sw)
     parts = [first]
