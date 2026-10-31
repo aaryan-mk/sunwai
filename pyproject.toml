@@ -112,7 +112,6 @@ convention = "google"
 "src/sunwai/planning/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/jobs/language_scheduler.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/control/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
-"src/sunwai/server/legacy_app.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/server/routers/control.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/lipsync/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/workers/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
@@ -125,8 +124,8 @@ convention = "google"
 # Engine modules are formatted when they are decomposed; reformatting them wholesale would bury the history.
 exclude = [
   "src/sunwai/pipeline/engine.py", "src/sunwai/pipeline/fitting/fit_stage.py", "src/sunwai/planning/*.py",
-  "src/sunwai/jobs/language_scheduler.py", "src/sunwai/control/*.py", "src/sunwai/server/legacy_app.py",
-  "src/sunwai/server/routers/control.py", "src/sunwai/lipsync/*.py", "src/sunwai/workers/*.py", "src/sunwai/mirrors/*.py",
+  "src/sunwai/jobs/language_scheduler.py", "src/sunwai/control/*.py", "src/sunwai/server/routers/control.py", "src/sunwai/lipsync/*.py",
+  "src/sunwai/workers/*.py", "src/sunwai/mirrors/*.py",
   "src/sunwai/clients/llm.py", "tests/unit/test_backend_switch.py", "tests/unit/test_crash_window.py",
   "tests/unit/test_language_scheduler.py",
 ]
@@ -143,7 +142,7 @@ warn_unused_ignores = false
 [[tool.mypy.overrides]]
 module = [
   "sunwai.pipeline.engine", "sunwai.pipeline.fitting.fit_stage", "sunwai.planning.*", "sunwai.jobs.language_scheduler",
-  "sunwai.control.*", "sunwai.server.legacy_app", "sunwai.server.routers.control", "sunwai.lipsync.*", "sunwai.workers.*",
+  "sunwai.control.*", "sunwai.server.routers.control", "sunwai.lipsync.*", "sunwai.workers.*",
   "sunwai.mirrors.*", "sunwai.clients.llm",
 ]
 # Deliberate, temporary: these modules are the original implementation moved verbatim and are not yet annotated.
