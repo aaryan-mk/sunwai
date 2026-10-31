@@ -327,7 +327,7 @@ def test_lipsync_hash_honesty(tmp_path):
     assert L.track_readiness(j, "ta", h)["lipsync_intervals"] == [[18050, 42250]]
 
 
-# ---- Sol r2: tracks.json inside the commit; contract enum ----
+# ---- review r2: tracks.json inside the commit; contract enum ----
 def _fail_tracks(monkeypatch, nth=1):
     real = L._atomic_json
     n = {"c": 0}

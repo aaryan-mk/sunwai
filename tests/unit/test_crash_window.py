@@ -117,7 +117,7 @@ def test_retry_after_crash_recovers_then_is_idempotent(tmp_path):
 
 
 def test_missing_chunk_state_does_not_release_cap(tmp_path):
-    """Sol r3: job 'done' + no chunk status (purged) is NOT abandonment; only an explicit marker releases."""
+    """review r3: job 'done' + no chunk status (purged) is NOT abandonment; only an explicit marker releases."""
     A = mkjob(tmp_path, "aaaaaaaaaaaa"); B = mkjob(tmp_path, "bbbbbbbbbbbb")
     L = load()
     L.request_track(A, "ta", 0, 1, hooks=L.Hooks(ensure_running=lambda j: None, target_codes=lambda: {"hi", "ta", "bn"}))
@@ -205,7 +205,7 @@ def test_service_release_hook_wiring(tmp_path):
 
 
 def test_marker_frees_only_when_job_task_dead(tmp_path):
-    """Sol r4: a release marker written while the job task may still schedule chunks must NOT free the cap (TOCTOU)."""
+    """review r4: a release marker written while the job task may still schedule chunks must NOT free the cap (TOCTOU)."""
     A = mkjob(tmp_path, "aaaaaaaaaaaa"); B = mkjob(tmp_path, "bbbbbbbbbbbb")
     L = load(); alive = {"v": True}
     h = L.Hooks(ensure_running=lambda j: None, target_codes=lambda: {"hi", "ta", "bn"}, job_active=lambda j: alive["v"] if j == "aaaaaaaaaaaa" else False)
