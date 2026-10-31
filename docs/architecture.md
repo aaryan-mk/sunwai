@@ -2,7 +2,7 @@
 
 SunwAI is one Python package (`src/sunwai`), one FastAPI application, and separate worker processes. Job state lives on the filesystem. GPU models are loaded inside workers, never at import time.
 
-Dependency rule: routers, then services, then domain modules, then clients and storage. Domain modules never import FastAPI. There is no plugin framework and no dependency-injection container; `bootstrap.py` is a small composition root.
+Dependency rule: routers, then services, then domain modules, then clients and storage. Domain modules never import FastAPI. There is no plugin framework and no dependency-injection container; `server/app.py` (`create_app`) with `server/container.py` is a small composition root.
 
 ## Components
 
@@ -31,13 +31,12 @@ flowchart LR
 | Web UI | `web/` | Player, transcript editing, language switching, action previews and chat. No framework. |
 | API | `server/` | App factory, routers, services, public schemas. Translates domain errors to HTTP. |
 | Control plane | `control/` | One validated action path (`ActionService`) used by buttons, transcript edits and chat; append-only revision/event store; auth, rate limits, spend caps. |
-| Jobs | `jobs/` | Job, language-track and chunk records; repository; pure transition rules; admission and priority; language scheduling; restart recovery. |
+| Jobs | `jobs/` | Add-a-language scheduling (`jobs/scheduler/`). Job admission, priority and the file repository live in `server/`. |
 | Planning | `planning/` | VAD, diarization, speaker vetting, gender, voice plan, chunk boundaries, plan signature. |
 | Pipeline | `pipeline/` | Stage protocol, runner (cache, retry, cancellation, timing), explicit workflow, stages, fitting, synthesis, mixing. |
 | Lip sync | `lipsync/` | Face tracking, gates, LatentSync adapter, paste-back, publication checks. |
 | Clients | `clients/` | ASR, MT, TTS, LID and LLM protocols with Bodhan, local-mirror and OpenRouter adapters; yt-dlp adapter. |
-| Storage | `storage/` | Atomic publication, validated paths, locks, manifests, artifact cache. |
-| Workers | `workers/` | Dub worker, lip-sync worker, leases, cross-process resource limits, process-group control. |
+| Workers | `workers/` | Persistent lip-sync worker (`LipSyncWorker`) and the service supervisor. |
 
 ## Data flow
 
@@ -139,8 +138,8 @@ Results that are degraded (`FitResult`, `RepairResult`, `GateDecision`) carry a 
 
 - **API process**: asynchronous, owns admission and the control plane. Run a single instance for now (filesystem jobs and in-memory guards).
 - **Dub work**: admitted chunk processes, scheduled by focus (what the viewer is watching), lookahead and missing work. Cross-process limits cap concurrent ASR, MT and TTS calls.
-- **Lip-sync worker**: one persistent process per GPU holding LatentSync and SyncNet in memory. It claims candidates with a lease, sends heartbeats, and publishes only if its lease, generation and revision are still current.
-- **Leases**: claim, heartbeat, expiry and fencing tokens (`workers/leases.py`). An expired lease is reclaimed through a recovery event.
+- **Lip-sync worker**: one persistent process per GPU holding LatentSync and SyncNet in memory. It claims candidates with a lock, sends heartbeats, prioritises the chunk the viewer is watching, and publishes atomically.
+- **Locks**: each lip-sync chunk is claimed with an exclusive lock file carrying a host-pid-time token and refreshed by a heartbeat; a lock that goes stale is taken over atomically, so several GPUs and machines can share the queue. (Fencing tokens are on the roadmap.)
 - **Processes**: child processes run in their own process groups so timeouts and cancellation kill the whole group; orphans are swept on startup.
 
 ## Revisions, fencing and restart
