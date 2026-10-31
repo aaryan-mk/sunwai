@@ -21,11 +21,14 @@ def make_bank(angles, genders, tau=0.9, cer=None):
     names = [f"V{i}" for i in range(len(angles))]
     cer = cer or {}
     langs = {
-        lang: {n: {"cer": cer.get(n, 5.0), "fails": 0, "emb": unit_vec(a), "logf0": 5.0} for n, a in zip(names, angles)}
+        lang: {
+            n: {"cer": cer.get(n, 5.0), "fails": 0, "emb": unit_vec(a), "logf0": 5.0}
+            for n, a in zip(names, angles, strict=True)
+        }
         for lang in LANGS
     }
     return {
-        "voices": {n: {"gender": g} for n, g in zip(names, genders)},
+        "voices": {n: {"gender": g} for n, g in zip(names, genders, strict=True)},
         "langs": langs,
         "native": {lang: ["V0"] for lang in LANGS},
         "tau": {"all": tau},
