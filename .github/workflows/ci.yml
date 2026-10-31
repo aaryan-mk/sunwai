@@ -60,4 +60,5 @@ jobs:
       - name: Install CPU development environment
         run: uv sync --extra dev --frozen
       - name: Integration tests
-        run: uv run pytest tests/integration -q
+        # Exit code 5 means "no tests collected"; the integration suite is still being filled in.
+        run: uv run pytest tests/integration -q || [ $? -eq 5 ]
