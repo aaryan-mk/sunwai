@@ -1,0 +1,45 @@
+{
+ "bn": {
+  "rates": {
+   "Amit": 5.35,
+   "Dhara": 4.88,
+   "Ishita": 5.08,
+   "Kavya": 5.55,
+   "Prastuti": 5.37,
+   "Sibu": 5.13,
+   "Sourav": 5.4,
+   "Sravani": 5.14
+  },
+  "ref": "Ishita"
+ },
+ "en": {
+  "rates": {
+   "Amit": 10.59,
+   "Sibu": 10.21
+  },
+  "ref": "Amit"
+ },
+ "hi": {
+  "rates": {
+   "Amit": 5.08,
+   "Dhara": 4.8,
+   "Kavya": 5.38,
+   "Prastuti": 4.85,
+   "Sravani": 5.04
+  },
+  "ref": "Kavya"
+ },
+ "ta": {
+  "rates": {
+   "Amit": 6.67,
+   "Anitha": 6.71,
+   "Arun": 7.38,
+   "Dhara": 5.87,
+   "Kavya": 7.36,
+   "Prastuti": 6.29,
+   "Sibu": 6.99,
+   "Sravani": 6.34
+  },
+  "ref": "Anitha"
+ }
+}

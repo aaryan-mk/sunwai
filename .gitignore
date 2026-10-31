@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration and secrets
+.env
+*.key
+*_key
+*.pem
+cookies*.txt
+ctl_token
+
+# Runtime state, media and model weights
+jobs/
+var/
+*.mp4
+*.wav
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+checkpoints/
+models/
+latentsync/
+
+# Editors
+.idea/
+.vscode/
+.DS_Store

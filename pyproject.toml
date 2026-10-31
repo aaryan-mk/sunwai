@@ -1,0 +1,152 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sunwai"
+version = "0.1.0"
+description = "SunwAI: Indic AI video dubbing with speaker-aware voices, live language switching and active-speaker lip sync"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "aaryan-mk" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: Apache Software License",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+# Core: the API server, settings, clients and the pipeline's CPU-side dependencies. No GPU packages.
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "requests>=2.31",
+  "numpy>=1.26,<2",
+  "scipy>=1.11",
+  "regex>=2024.5",
+  "soundfile>=0.12",
+  "librosa>=0.10.1",
+]
+
+[project.optional-dependencies]
+# Planning and speaker models (pyannote needs a Hugging Face token with the model terms accepted).
+models = [
+  "torch>=2.5",
+  "pyannote.audio>=3.3",
+  "speechbrain>=1.0",
+  "silero-vad>=5.1",
+  "scikit-learn>=1.4",
+  "transformers>=4.48",
+  "yt-dlp",
+  "demucs>=4.0",
+]
+# Lip sync (GPU). LatentSync itself is cloned separately; see docs/models.md.
+lipsync = [
+  "torch==2.5.1",
+  "torchvision==0.20.1",
+  "diffusers==0.32.2",
+  "transformers==4.48.0",
+  "accelerate==0.26.1",
+  "einops==0.7.0",
+  "omegaconf==2.3.0",
+  "opencv-python==4.9.0.80",
+  "kornia==0.8.0",
+  "insightface==0.7.3",
+  "onnxruntime-gpu==1.21.0",
+  "python_speech_features==0.6",
+  "DeepCache==0.1.1",
+  "mediapipe==0.10.11",
+  "face-alignment==1.4.1",
+]
+indictrans2 = ["IndicTransToolkit", "transformers>=4.48", "torch>=2.5"]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  "httpx>=0.27",
+  "ruff>=0.6",
+  "mypy>=1.10",
+  "types-requests",
+  "pre-commit>=3.7",
+]
+e2e = ["playwright>=1.45"]
+
+[project.scripts]
+sunwai = "sunwai.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sunwai"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/contracts"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+extend-exclude = ["web"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "D"]
+ignore = ["D203", "D213", "D107", "D105", "D102", "D415", "D205", "UP007", "UP006", "UP035"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+# New, strictly styled modules are everything not listed here. The engine modules below are the original
+# implementation, moved verbatim and decomposed gradually: they keep compact one-line statements and terse
+# docstrings until they are split into the modules described in docs/architecture.md.
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "E", "I", "F401", "F811", "E731", "B011", "B017", "B023"]
+"scripts/**" = ["D"]
+"src/sunwai/pipeline/engine.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+"src/sunwai/pipeline/fitting/fit_stage.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+"src/sunwai/planning/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+"src/sunwai/jobs/language_scheduler.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+"src/sunwai/control/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+"src/sunwai/server/legacy_app.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+"src/sunwai/server/routers/control.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+"src/sunwai/lipsync/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+"src/sunwai/workers/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+"src/sunwai/mirrors/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+"src/sunwai/clients/llm.py" = ["E", "B", "D", "UP"]
+"src/sunwai/core/config.py" = ["E501", "D"]
+"src/sunwai/core/legacy_env.py" = ["E501"]
+
+[tool.ruff.format]
+# Engine modules are formatted when they are decomposed; reformatting them wholesale would bury the history.
+exclude = [
+  "src/sunwai/pipeline/engine.py", "src/sunwai/pipeline/fitting/fit_stage.py", "src/sunwai/planning/*.py",
+  "src/sunwai/jobs/language_scheduler.py", "src/sunwai/control/*.py", "src/sunwai/server/legacy_app.py",
+  "src/sunwai/server/routers/control.py", "src/sunwai/lipsync/*.py", "src/sunwai/workers/*.py", "src/sunwai/mirrors/*.py",
+  "src/sunwai/clients/llm.py", "tests/unit/test_backend_switch.py", "tests/unit/test_crash_window.py",
+  "tests/unit/test_language_scheduler.py",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src/sunwai"]
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = false
+
+# Engine modules: the original, largely unannotated implementation. mypy still follows their imports, but their
+# bodies are not required to be annotated; see docs/architecture.md for the extraction plan.
+[[tool.mypy.overrides]]
+module = [
+  "sunwai.pipeline.engine", "sunwai.pipeline.fitting.fit_stage", "sunwai.planning.*", "sunwai.jobs.language_scheduler",
+  "sunwai.control.*", "sunwai.server.legacy_app", "sunwai.server.routers.control", "sunwai.lipsync.*", "sunwai.workers.*",
+  "sunwai.mirrors.*", "sunwai.clients.llm",
+]
+# Deliberate, temporary: these modules are the original implementation moved verbatim and are not yet annotated.
+# Every module that is extracted from them (see docs/architecture.md) is checked under the strict settings above.
+ignore_errors = true
+
+# Third-party packages without type information.
+[[tool.mypy.overrides]]
+module = ["librosa.*", "soundfile.*", "scipy.*", "regex.*", "kornia.*", "torchvision.*", "cv2.*", "python_speech_features.*",
+          "omegaconf.*", "diffusers.*", "DeepCache.*", "einops.*", "accelerate.*", "latentsync.*", "eval.*", "torch.*",
+          "silero_vad.*", "speechbrain.*", "pyannote.*", "sklearn.*", "demucs.*", "yt_dlp.*", "IndicTransToolkit.*", "transformers.*"]
+ignore_missing_imports = true

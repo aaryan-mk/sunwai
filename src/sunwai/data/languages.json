@@ -1,0 +1,396 @@
+{
+ "targets": [
+  {
+   "code": "hi",
+   "name": "Hindi",
+   "mt_prompt": "Hindi",
+   "script": "Devanagari",
+   "status": "polished",
+   "voices": {
+    "male": [
+     "Amit"
+    ],
+    "female": [
+     "Kavya"
+    ]
+   },
+   "rate": 5.56,
+   "rate_measured": 5.56
+  },
+  {
+   "code": "ta",
+   "name": "Tamil",
+   "mt_prompt": "Tamil",
+   "script": "Tamil",
+   "status": "polished",
+   "voices": {
+    "male": [
+     "Arun"
+    ],
+    "female": [
+     "Anitha"
+    ]
+   },
+   "rate": 7.92,
+   "rate_measured": 7.92
+  },
+  {
+   "code": "bn",
+   "name": "Bengali",
+   "mt_prompt": "Bengali",
+   "script": "Bengali",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Sourav"
+    ],
+    "female": [
+     "Ishita"
+    ]
+   },
+   "rate": 5.89,
+   "rate_measured": 5.89
+  },
+  {
+   "code": "mr",
+   "name": "Marathi",
+   "mt_prompt": "Marathi",
+   "script": "Devanagari",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Chinmay"
+    ],
+    "female": [
+     "Anagha"
+    ]
+   },
+   "rate": 5.4,
+   "rate_measured": 5.4
+  },
+  {
+   "code": "te",
+   "name": "Telugu",
+   "mt_prompt": "Telugu",
+   "script": "Telugu",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Vamsi"
+    ],
+    "female": [
+     "Sravani"
+    ]
+   },
+   "rate": 4.97,
+   "rate_measured": 4.97
+  },
+  {
+   "code": "gu",
+   "name": "Gujarati",
+   "mt_prompt": "Gujarati",
+   "script": "Gujarati",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Parth"
+    ],
+    "female": [
+     "Dhara"
+    ]
+   },
+   "rate": 5.26,
+   "rate_measured": 5.26
+  },
+  {
+   "code": "kn",
+   "name": "Kannada",
+   "mt_prompt": "Kannada",
+   "script": "Kannada",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Adarsh"
+    ],
+    "female": [
+     "Deepika"
+    ]
+   },
+   "rate": 5.7,
+   "rate_measured": 5.7
+  },
+  {
+   "code": "ml",
+   "name": "Malayalam",
+   "mt_prompt": "Malayalam",
+   "script": "Malayalam",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Kiran"
+    ],
+    "female": [
+     "Lakshmi"
+    ]
+   },
+   "rate": 5.51,
+   "rate_measured": 5.51
+  },
+  {
+   "code": "ur",
+   "name": "Urdu",
+   "mt_prompt": "Urdu",
+   "script": "Perso-Arabic",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Zaid"
+    ],
+    "female": [
+     "Saba"
+    ]
+   },
+   "rate": 9.36,
+   "rate_measured": 9.36
+  },
+  {
+   "code": "pa",
+   "name": "Punjabi",
+   "mt_prompt": "Punjabi",
+   "script": "Gurmukhi",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Manpreet"
+    ],
+    "female": [
+     "Kaur"
+    ]
+   },
+   "rate": 5.7,
+   "rate_measured": 5.7
+  },
+  {
+   "code": "or",
+   "name": "Odia",
+   "mt_prompt": "Odia",
+   "script": "Odia",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Akash"
+    ],
+    "female": [
+     "Itishree"
+    ]
+   },
+   "rate": 5.73,
+   "rate_measured": 5.73
+  },
+  {
+   "code": "as",
+   "name": "Assamese",
+   "mt_prompt": "Assamese",
+   "script": "Bengali–Assamese",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Ankur"
+    ],
+    "female": [
+     "Prastuti"
+    ]
+   },
+   "rate": 6.23,
+   "rate_measured": 6.23
+  },
+  {
+   "code": "en",
+   "name": "English",
+   "mt_prompt": "English",
+   "script": "Latin",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Amit"
+    ],
+    "female": [
+     "Kavya"
+    ]
+   },
+   "rate": 12.18,
+   "rate_measured": 12.18
+  },
+  {
+   "code": "brx",
+   "name": "Bodo",
+   "mt_prompt": "Bodo",
+   "script": "Devanagari",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Sansuma"
+    ],
+    "female": [
+     "Gwrbw"
+    ]
+   },
+   "rate": 5.53,
+   "rate_measured": 5.53
+  },
+  {
+   "code": "doi",
+   "name": "Dogri",
+   "mt_prompt": "Dogri",
+   "script": "Devanagari",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Sham"
+    ],
+    "female": [
+     "Preeti"
+    ]
+   },
+   "rate": 5.69,
+   "rate_measured": 5.69
+  },
+  {
+   "code": "ks",
+   "name": "Kashmiri",
+   "mt_prompt": "Kashmiri (Perso-Arabic script)",
+   "script": "Perso-Arabic",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Ishfaq"
+    ],
+    "female": [
+     "Zoon"
+    ]
+   },
+   "rate": 7.71,
+   "rate_measured": 7.71
+  },
+  {
+   "code": "kok",
+   "name": "Konkani",
+   "mt_prompt": "Konkani",
+   "script": "Devanagari",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Sandeep"
+    ],
+    "female": [
+     "Anjali"
+    ]
+   },
+   "rate": 6.75,
+   "rate_measured": 6.75
+  },
+  {
+   "code": "mai",
+   "name": "Maithili",
+   "mt_prompt": "Maithili",
+   "script": "Devanagari",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Madhukar"
+    ],
+    "female": [
+     "Vaidehi"
+    ]
+   },
+   "rate": 5.48,
+   "rate_measured": 5.48
+  },
+  {
+   "code": "mni",
+   "name": "Manipuri (Meitei)",
+   "mt_prompt": "Manipuri (Bengali script)",
+   "script": "Bengali",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Chaoba"
+    ],
+    "female": [
+     "Thoibi"
+    ]
+   },
+   "rate": 3.3,
+   "rate_measured": 3.3
+  },
+  {
+   "code": "ne",
+   "name": "Nepali",
+   "mt_prompt": "Nepali",
+   "script": "Devanagari",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Sagar"
+    ],
+    "female": [
+     "Srijana"
+    ]
+   },
+   "rate": 5.04,
+   "rate_measured": 5.04
+  },
+  {
+   "code": "sa",
+   "name": "Sanskrit",
+   "mt_prompt": "Sanskrit",
+   "script": "Devanagari",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Aryaman"
+    ],
+    "female": [
+     "Bharati"
+    ]
+   },
+   "rate": 3.88,
+   "rate_measured": 3.88
+  },
+  {
+   "code": "sat",
+   "name": "Santali",
+   "mt_prompt": "Santali",
+   "script": "Ol Chiki",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Sibu"
+    ],
+    "female": [
+     "Phulmani"
+    ]
+   },
+   "rate": 9.69,
+   "rate_measured": 9.69
+  },
+  {
+   "code": "sd",
+   "name": "Sindhi",
+   "mt_prompt": "Sindhi (Perso-Arabic script)",
+   "script": "Perso-Arabic",
+   "status": "beta",
+   "voices": {
+    "male": [
+     "Rano"
+    ],
+    "female": [
+     "Moomal"
+    ]
+   },
+   "rate": 5.29,
+   "rate_measured": 5.29
+  }
+ ],
+ "sources": "auto (VoxLingua107 LID; ASR supports 27 languages)"
+}
