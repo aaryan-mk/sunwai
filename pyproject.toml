@@ -107,7 +107,29 @@ convention = "google"
 "tests/unit/cases/**" = ["ALL"]
 "tests/**" = ["D", "E", "I", "F401", "F811", "E731", "B011", "B017", "B023"]
 "scripts/**" = ["D"]
-"src/sunwai/pipeline/engine.py" = ["E", "F", "W", "B", "UP", "D", "I"]
+# --- engine decomposition (moved legacy code; relaxed until each function is rewritten) ---
+"src/sunwai/pipeline/engine.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/shared_prep.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/resynth.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/voices.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/support/*.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/mixing/*.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/media/*.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/language/*.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/synthesis/*.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/clients/service_calls.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/clients/service_endpoints.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/fetch.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/audio.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/vad.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/slots.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/speakers.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/asr.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/numbers.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/mt.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/tts.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/separate.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
+"src/sunwai/pipeline/stages/mix.py" = ["E", "F", "W", "B", "UP", "D", "I", "E402"]
 "src/sunwai/pipeline/fitting/fit_stage.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/planning/*.py" = ["E", "F", "W", "B", "UP", "D", "I"]
 "src/sunwai/jobs/language_scheduler.py" = ["E", "F", "W", "B", "UP", "D", "I"]
@@ -124,7 +146,29 @@ convention = "google"
 [tool.ruff.format]
 # Engine modules are formatted when they are decomposed; reformatting them wholesale would bury the history.
 exclude = [
-  "src/sunwai/pipeline/engine.py", "src/sunwai/pipeline/fitting/fit_stage.py", "src/sunwai/planning/*.py",
+  "src/sunwai/pipeline/engine.py",
+  "src/sunwai/pipeline/shared_prep.py",
+  "src/sunwai/pipeline/resynth.py",
+  "src/sunwai/pipeline/voices.py",
+  "src/sunwai/pipeline/support/*.py",
+  "src/sunwai/pipeline/mixing/*.py",
+  "src/sunwai/media/*.py",
+  "src/sunwai/language/*.py",
+  "src/sunwai/synthesis/*.py",
+  "src/sunwai/clients/service_calls.py",
+  "src/sunwai/clients/service_endpoints.py",
+  "src/sunwai/pipeline/stages/fetch.py",
+  "src/sunwai/pipeline/stages/audio.py",
+  "src/sunwai/pipeline/stages/vad.py",
+  "src/sunwai/pipeline/stages/slots.py",
+  "src/sunwai/pipeline/stages/speakers.py",
+  "src/sunwai/pipeline/stages/asr.py",
+  "src/sunwai/pipeline/stages/numbers.py",
+  "src/sunwai/pipeline/stages/mt.py",
+  "src/sunwai/pipeline/stages/tts.py",
+  "src/sunwai/pipeline/stages/separate.py",
+  "src/sunwai/pipeline/stages/mix.py",
+  "src/sunwai/pipeline/fitting/fit_stage.py", "src/sunwai/planning/*.py",
   "src/sunwai/jobs/language_scheduler.py", "src/sunwai/control/*.py", "src/sunwai/server/legacy_app.py",
   "src/sunwai/server/routers/control.py", "src/sunwai/lipsync/*.py", "src/sunwai/workers/*.py", "src/sunwai/mirrors/*.py",
   "src/sunwai/clients/llm.py", "tests/unit/test_backend_switch.py", "tests/unit/test_crash_window.py",
@@ -142,7 +186,7 @@ warn_unused_ignores = false
 # bodies are not required to be annotated; see docs/architecture.md for the extraction plan.
 [[tool.mypy.overrides]]
 module = [
-  "sunwai.pipeline.engine", "sunwai.pipeline.fitting.fit_stage", "sunwai.planning.*", "sunwai.jobs.language_scheduler",
+  "sunwai.pipeline.engine", "sunwai.pipeline.shared_prep", "sunwai.pipeline.resynth", "sunwai.pipeline.voices", "sunwai.pipeline.support.*", "sunwai.pipeline.mixing.*", "sunwai.media.*", "sunwai.language.*", "sunwai.synthesis.*", "sunwai.clients.service_calls", "sunwai.clients.service_endpoints", "sunwai.pipeline.stages.fetch", "sunwai.pipeline.stages.audio", "sunwai.pipeline.stages.vad", "sunwai.pipeline.stages.slots", "sunwai.pipeline.stages.speakers", "sunwai.pipeline.stages.asr", "sunwai.pipeline.stages.numbers", "sunwai.pipeline.stages.mt", "sunwai.pipeline.stages.tts", "sunwai.pipeline.stages.separate", "sunwai.pipeline.stages.mix", "sunwai.pipeline.fitting.fit_stage", "sunwai.planning.*", "sunwai.jobs.language_scheduler",
   "sunwai.control.*", "sunwai.server.legacy_app", "sunwai.server.routers.control", "sunwai.lipsync.*", "sunwai.workers.*",
   "sunwai.mirrors.*", "sunwai.clients.llm",
 ]

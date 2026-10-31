@@ -219,8 +219,15 @@ def test_bodhan_cfg_modes(monkeypatch):
 def dp(monkeypatch, tmp_path, mode):
     monkeypatch.setenv("DUB_SLOT_DIR", str(tmp_path)); monkeypatch.setenv("BODHAN_MODE", mode)
     cfg()
-    import sunwai.pipeline.engine as dub_pipeline
-    return importlib.reload(dub_pipeline)
+    import sunwai.clients.service_calls as calls
+    import sunwai.clients.service_endpoints as endpoints
+    import sunwai.pipeline.engine as engine
+    import sunwai.pipeline.stages.mt as mt
+    import sunwai.pipeline.support.concurrency as concurrency
+
+    for module in (endpoints, concurrency, calls, mt, engine):      # dependency order: each re-reads the environment
+        importlib.reload(module)
+    return engine
 
 
 @pytest.mark.parametrize("mode,base_re", [("api", "https://api.bodhan.ai"), ("local", "http://127.0.0.1:")])

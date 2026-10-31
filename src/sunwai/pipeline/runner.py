@@ -29,9 +29,9 @@ class FileTimingSink:
 
     def record(self, work_dir: Path, key: str, seconds: float) -> None:
         """Add ``seconds`` to ``timings.json`` under ``key``."""
-        from sunwai.pipeline import engine
+        from sunwai.pipeline.support.storage import save_timing
 
-        engine.save_timing(work_dir, key, seconds)
+        save_timing(work_dir, key, seconds)
 
 
 class Pipeline:

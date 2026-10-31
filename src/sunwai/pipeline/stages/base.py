@@ -14,14 +14,7 @@ Segments = list[dict[str, Any]]
 """Legacy segment records (one dict per spoken line); converted to typed models in a later phase."""
 
 
-def engine() -> Any:
-    """Import the engine lazily so importing :mod:`sunwai.pipeline` stays free of numpy/librosa/torch."""
-    from sunwai.pipeline import engine as module
-
-    return module
-
-
-class EngineStage(Generic[InT, OutT]):
+class StageBase(Generic[InT, OutT]):
     """A stage whose work is done by a function of :mod:`sunwai.pipeline.engine`.
 
     Subclasses set ``name`` and ``policy`` and implement :meth:`run` as a one-line call into the engine. The engine

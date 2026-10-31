@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from sunwai.pipeline import runtime
 from sunwai.pipeline.context import ChunkContext
 from sunwai.pipeline.runner import Pipeline
+from sunwai.pipeline.shared_prep import chunk_lookahead_gate
 from sunwai.pipeline.stages import (
     FitStage,
     MixStage,
@@ -15,7 +17,8 @@ from sunwai.pipeline.stages import (
     SharedPrepStage,
     TtsStage,
 )
-from sunwai.pipeline.stages.base import Segments, engine
+from sunwai.pipeline.stages.base import Segments
+from sunwai.pipeline.voices import voice_preflight
 
 STAGE_ORDER = ("prepare", "mt", "fit", "numbers", "tts", "separate", "mix")
 """Execution order; mirrors ``engine.main`` and is checked by a contract test."""
@@ -44,11 +47,10 @@ class DubWorkflow:
         Raises:
             Cancelled, DeadlineExceeded, StageError: See :meth:`Pipeline.execute`.
         """
-        eng = engine()
         ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        eng.voice_preflight(ctx.request.language, ctx.work_dir)  # a bad voice plan fails the chunk up front
-        eng._args_dur = ctx.request.duration_s  # slot force-cut length used by the engine
-        eng.chunk_lookahead_gate(ctx.work_dir)
+        voice_preflight(ctx.request.language, ctx.work_dir)  # a bad voice plan fails the chunk up front
+        runtime.args_dur = ctx.request.duration_s  # slot force-cut length
+        chunk_lookahead_gate(ctx.work_dir)
         run = self._pipeline.execute
         segments: Segments = run(self._prepare, None, ctx)
         segments = run(self._mt, segments, ctx)

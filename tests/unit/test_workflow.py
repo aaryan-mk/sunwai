@@ -58,16 +58,14 @@ def test_runner_honours_cancellation_and_deadline(tmp_path: Path) -> None:
         Pipeline(Recorder()).execute(Upper(), "x", make_ctx(tmp_path, deadline=Deadline.after(-1)))
 
 
-def test_engine_adapter_delegates_with_legacy_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stage_passes_legacy_args_to_its_implementation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, Any] = {}
 
-    class FakeEngine:
-        def stage_mt(self, args: Any, out_dir: Path, segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
-            seen.update(lang=args.lang, out=args.out, n=len(segments))
-            return segments
+    def fake_stage_mt(args: Any, out_dir: Path, segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen.update(lang=args.lang, out=args.out, n=len(segments))
+        return segments
 
-    monkeypatch.setattr("sunwai.pipeline.stages.base.engine", lambda: FakeEngine())
-    monkeypatch.setattr("sunwai.pipeline.stages.mt.engine", lambda: FakeEngine())
+    monkeypatch.setattr("sunwai.pipeline.stages.mt.stage_mt", fake_stage_mt)
     out = MtStage().run([{"id": 0}], make_ctx(tmp_path))
     assert out == [{"id": 0}] and seen == {"lang": "hi", "out": str(tmp_path), "n": 1}
 

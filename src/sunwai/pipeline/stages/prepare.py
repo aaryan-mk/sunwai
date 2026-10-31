@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from sunwai.pipeline.context import ChunkContext
+from sunwai.pipeline.shared_prep import prep_shared
 from sunwai.pipeline.stage import StagePolicy
-from sunwai.pipeline.stages.base import EngineStage, Segments, engine
+from sunwai.pipeline.stages.base import Segments, StageBase
 
 
-class SharedPrepStage(EngineStage[None, Segments]):
+class SharedPrepStage(StageBase[None, Segments]):
     """Fetch, audio, VAD, slots, speakers and ASR with cross-language sharing.
 
     The first language to take the per-chunk lock computes and publishes ``<job>/_prep/cNNNN``; the others copy it.
@@ -19,4 +20,4 @@ class SharedPrepStage(EngineStage[None, Segments]):
 
     def run(self, value: None, ctx: ChunkContext) -> Segments:
         """Return the source-language segments for the chunk."""
-        return engine().prep_shared(ctx.legacy_args(), ctx.work_dir)  # type: ignore[no-any-return]
+        return prep_shared(ctx.legacy_args(), ctx.work_dir)  # type: ignore[no-any-return]

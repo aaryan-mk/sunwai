@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from sunwai.pipeline.context import ChunkContext
 from sunwai.pipeline.stage import StagePolicy
-from sunwai.pipeline.stages.base import EngineStage, Segments, engine
+from sunwai.pipeline.stages.base import Segments, StageBase
 
 
-class FitStage(EngineStage[Segments, Segments]):
+class FitStage(StageBase[Segments, Segments]):
     """Duration-aware rewrite (LLM) with script, word-split, length and meaning guards."""
 
     name = "fit"
@@ -16,7 +16,8 @@ class FitStage(EngineStage[Segments, Segments]):
     def run(self, value: Segments, ctx: ChunkContext) -> Segments:
         """Fit each segment to its duration budget, budgeting per assigned voice."""
         from sunwai.pipeline.fitting.fit_stage import stage_fit
+        from sunwai.pipeline.voices import pick_voice
 
         args = ctx.legacy_args()
-        args.pick_voice = engine().pick_voice  # the fit stage budgets per voice
+        args.pick_voice = pick_voice  # the fit stage budgets per voice
         return stage_fit(args, ctx.work_dir, value)  # type: ignore[no-any-return]
