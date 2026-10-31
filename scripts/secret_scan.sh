@@ -4,7 +4,7 @@ set -u
 status=0
 scan() {  # type regex
   local hits
-  hits=$(grep -rInE --exclude-dir=.git --exclude-dir=__pycache__ --exclude-dir=.pytest_cache --exclude-dir=.mypy_cache --exclude-dir=.ruff_cache --exclude-dir=*.egg-info --exclude='secret_scan.sh' -e "$2" . 2>/dev/null | cut -d: -f1,2 || true)
+  hits=$(grep -rInE --exclude-dir=.git --exclude-dir=__pycache__ --exclude-dir=.pytest_cache --exclude-dir=.mypy_cache --exclude-dir=.ruff_cache --exclude-dir=*.egg-info --exclude='secret_scan.sh' --exclude=uv.lock -e "$2" . 2>/dev/null | grep -v 'a229c3948406bc2cf6eaf4873e662e70c6a04746' | cut -d: -f1,2 || true)   # public upstream commit pin
   if [ -n "$hits" ]; then echo "$hits" | sed "s/$/  [$1]/"; status=1; fi
 }
 scan openai-style-key 'sk-[A-Za-z0-9_-]{20,}'

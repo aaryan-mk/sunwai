@@ -1,0 +1,24 @@
+SunwAI
+Copyright 2026 aaryan-mk and SunwAI contributors
+
+This product includes software developed by the SunwAI contributors
+(https://github.com/aaryan-mk/sunwai), licensed under the Apache License, Version 2.0.
+
+This repository does not redistribute third-party model weights. It builds on
+the following open-source projects, used under their own licences. The full
+inventory, including model checkpoints and licences to verify, is in
+THIRD_PARTY.md.
+
+  LatentSync          (ByteDance)          Apache-2.0   https://github.com/bytedance/LatentSync
+  SpeechBrain                              Apache-2.0   https://github.com/speechbrain/speechbrain
+  pyannote.audio                           MIT          https://github.com/pyannote/pyannote-audio
+  Demucs              (Meta)               MIT          https://github.com/facebookresearch/demucs
+  Silero VAD                               MIT          https://github.com/snakers4/silero-vad
+  IndicTrans2         (AI4Bharat)          MIT          https://github.com/AI4Bharat/IndicTrans2
+  FastAPI                                  MIT          https://github.com/fastapi/fastapi
+  PyTorch                                  BSD-3-Clause https://github.com/pytorch/pytorch
+  yt-dlp                                   Unlicense    https://github.com/yt-dlp/yt-dlp
+
+Where a component is Apache-2.0 and is redistributed, its own NOTICE content
+must be preserved. Where a component is MIT, its copyright and licence text
+must accompany any redistribution.
