@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 from sunwai.pipeline.context import ChunkContext
 from sunwai.pipeline.stage import StagePolicy
+from sunwai.pipeline.models import from_records, to_records
 from sunwai.pipeline.stages.base import Segments, StageBase
 
 from sunwai.clients.service_endpoints import IT2_BASE, IT2_TARGETS, MT_BASES
@@ -326,4 +327,4 @@ class MtStage(StageBase[Segments, Segments]):
 
     def run(self, value: Segments, ctx: ChunkContext) -> Segments:
         """Translate segments into the target language with source-span routing."""
-        return stage_mt(ctx.legacy_args(), ctx.work_dir, value)  # type: ignore[no-any-return]
+        return from_records(stage_mt(ctx.legacy_args(), ctx.work_dir, to_records(value)))

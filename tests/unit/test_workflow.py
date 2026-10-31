@@ -12,6 +12,7 @@ from sunwai.core.config import Settings
 from sunwai.core.deadlines import CancellationToken, Deadline
 from sunwai.core.errors import Cancelled, DeadlineExceeded
 from sunwai.pipeline.context import ChunkContext, ChunkRequest
+from sunwai.pipeline.models import Segment
 from sunwai.pipeline.runner import Pipeline
 from sunwai.pipeline.stage import StagePolicy
 from sunwai.pipeline.stages import MtStage
@@ -61,13 +62,13 @@ def test_runner_honours_cancellation_and_deadline(tmp_path: Path) -> None:
 def test_stage_passes_legacy_args_to_its_implementation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, Any] = {}
 
-    def fake_stage_mt(args: Any, out_dir: Path, segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def fake_stage_mt(args: Any, out_dir: Path, segments: list[dict[str, Any]]) -> list[dict[str, Any]]:  # records
         seen.update(lang=args.lang, out=args.out, n=len(segments))
         return segments
 
     monkeypatch.setattr("sunwai.pipeline.stages.mt.stage_mt", fake_stage_mt)
-    out = MtStage().run([{"id": 0}], make_ctx(tmp_path))
-    assert out == [{"id": 0}] and seen == {"lang": "hi", "out": str(tmp_path), "n": 1}
+    out = MtStage().run([Segment(id=0, start=0.0, end=1.0)], make_ctx(tmp_path))
+    assert [s.id for s in out] == [0] and seen == {"lang": "hi", "out": str(tmp_path), "n": 1}
 
 
 def test_workflow_order_matches_engine_main() -> None:

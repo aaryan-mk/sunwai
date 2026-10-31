@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sunwai.pipeline.context import ChunkContext
+from sunwai.pipeline.models import from_records, to_records
 from sunwai.pipeline.stage import StagePolicy
 from sunwai.pipeline.stages.base import Segments, StageBase
 
@@ -20,4 +21,4 @@ class FitStage(StageBase[Segments, Segments]):
 
         args = ctx.legacy_args()
         args.pick_voice = pick_voice  # the fit stage budgets per voice
-        return stage_fit(args, ctx.work_dir, value)  # type: ignore[no-any-return]
+        return from_records(stage_fit(args, ctx.work_dir, to_records(value)))

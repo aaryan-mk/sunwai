@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 
 from sunwai.pipeline.context import ChunkContext
 from sunwai.pipeline.stage import StagePolicy
+from sunwai.pipeline.models import from_records, to_records
 from sunwai.pipeline.stages.base import Segments, StageBase
 
 from sunwai.language.spoken import set_stage_language
@@ -76,4 +77,4 @@ class NumbersStage(StageBase[Segments, Segments]):
 
     def run(self, value: Segments, ctx: ChunkContext) -> Segments:
         """Produce normalised spoken text (numbers spelled out)."""
-        return stage_numbers(ctx.legacy_args(), ctx.work_dir, value)  # type: ignore[no-any-return]
+        return from_records(stage_numbers(ctx.legacy_args(), ctx.work_dir, to_records(value)))

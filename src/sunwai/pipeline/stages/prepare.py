@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sunwai.pipeline.context import ChunkContext
+from sunwai.pipeline.models import from_records
 from sunwai.pipeline.shared_prep import prep_shared
 from sunwai.pipeline.stage import StagePolicy
 from sunwai.pipeline.stages.base import Segments, StageBase
@@ -20,4 +21,4 @@ class SharedPrepStage(StageBase[None, Segments]):
 
     def run(self, value: None, ctx: ChunkContext) -> Segments:
         """Return the source-language segments for the chunk."""
-        return prep_shared(ctx.legacy_args(), ctx.work_dir)  # type: ignore[no-any-return]
+        return from_records(prep_shared(ctx.legacy_args(), ctx.work_dir))

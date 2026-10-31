@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 from sunwai.pipeline.context import ChunkContext
 from sunwai.pipeline.stage import StagePolicy
+from sunwai.pipeline.models import to_records
 from sunwai.pipeline.stages.base import Segments, StageBase
 
 from sunwai.media.audio import save_wav_stereo
@@ -279,4 +280,4 @@ class MixStage(StageBase[Segments, Path]):
 
     def run(self, value: Segments, ctx: ChunkContext) -> Path:
         """Align, duck, mix and limit the final audio, then mux the chunk video."""
-        return stage_mix(ctx.legacy_args(), ctx.work_dir, value)  # type: ignore[no-any-return]
+        return stage_mix(ctx.legacy_args(), ctx.work_dir, to_records(value))  # type: ignore[no-any-return]

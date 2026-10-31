@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from sunwai.pipeline.context import ChunkContext
+from sunwai.pipeline.models import Segment
 from sunwai.pipeline.stage import StagePolicy
 
 InT = TypeVar("InT")
 OutT = TypeVar("OutT")
 
-Segments = list[dict[str, Any]]
-"""Legacy segment records (one dict per spoken line); converted to typed models in a later phase."""
+Segments = list[Segment]
+"""Typed segments passed between stages (converted to dict records at the implementation boundary)."""
 
 
 class StageBase(Generic[InT, OutT]):

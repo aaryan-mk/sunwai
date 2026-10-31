@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 
 from sunwai.pipeline.context import ChunkContext
 from sunwai.pipeline.stage import StagePolicy
+from sunwai.pipeline.models import from_records, to_records
 from sunwai.pipeline.stages.base import Segments, StageBase
 
 from sunwai.clients.service_endpoints import TTS_BASES
@@ -540,4 +541,4 @@ class TtsStage(StageBase[Segments, Segments]):
 
     def run(self, value: Segments, ctx: ChunkContext) -> Segments:
         """Synthesise segments with the split and runaway-repair policies."""
-        return stage_tts(ctx.legacy_args(), ctx.work_dir, value)  # type: ignore[no-any-return]
+        return from_records(stage_tts(ctx.legacy_args(), ctx.work_dir, to_records(value)))

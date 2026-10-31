@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 
 from sunwai.pipeline.context import ChunkContext
 from sunwai.pipeline.stage import StagePolicy
+from sunwai.pipeline.models import from_records
 from sunwai.pipeline.stages.base import Segments, StageBase
 
 from sunwai.clients.service_calls import bodhan_asr, load_keys
@@ -219,4 +220,4 @@ class AsrStage(StageBase[list[dict[str, Any]], Segments]):
 
     def run(self, value: list[dict[str, Any]], ctx: ChunkContext) -> Segments:
         """Transcribe slots and deduplicate boundary words."""
-        return stage_asr(ctx.legacy_args(), ctx.work_dir, value)  # type: ignore[no-any-return]
+        return from_records(stage_asr(ctx.legacy_args(), ctx.work_dir, value))
