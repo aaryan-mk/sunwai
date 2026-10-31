@@ -19,7 +19,8 @@ from typing import Any, Dict, List
 from sunwai.language.spoken import _expr_spoken, _num_spoken  # noqa: F401
 from sunwai.pipeline import runtime
 from sunwai.clients.service_endpoints import (ASR_BASE, BASE_URL, IT2_BASE, IT2_TARGETS, MT_BASE, MT_BASES, TTS_BASE, TTS_BASES, TTS_MODEL, _TTS_RR, _next_mt_base, _next_tts_base)  # noqa: F401
-from sunwai.clients.service_calls import (_bodhan_tts_bounded, _budget_timeout, _post_bounded, _stream_post, _with_retries, bodhan_asr, bodhan_mt, bodhan_tts, load_keys)  # noqa: F401
+from sunwai.clients.service_calls import (_bodhan_tts_bounded, _budget_timeout, _post_bounded, _stream_post, _tts_wav, _with_retries, bodhan_asr, bodhan_mt, bodhan_tts, load_keys)  # noqa: F401
+from sunwai.clients.rate_limit import RateGate as _RateGate, _GATES, api_rate_wait, parse_retry_after, rate_gate  # noqa: F401
 from sunwai.language.numbers import (  # noqa: F401
     _TN_CACHE,
     _TN_CACHE_MAX,

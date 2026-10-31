@@ -36,6 +36,24 @@ class BodhanSettings(ConfigGroup):
         default=None,
         description="Logical TTS replica count in api mode (sizes worker pools). Legacy name: BODHAN_API_TTS_FANOUT.",
     )
+    api_rpm_asr: int | None = Field(
+        default=None,
+        description="Hosted ASR requests per minute across all processes (default 60). Legacy name: BODHAN_API_RPM_ASR.",
+    )
+    api_rpm_mt: int | None = Field(
+        default=None, description="Hosted MT requests per minute (default 100). Legacy name: BODHAN_API_RPM_MT."
+    )
+    api_rpm_tts: int | None = Field(
+        default=None, description="Hosted TTS requests per minute (default 8). Legacy name: BODHAN_API_RPM_TTS."
+    )
+    api_rate_wait: float | None = Field(
+        default=None,
+        description="Longest a call waits for the hosted rate window, seconds (default 300). Legacy name: BODHAN_API_RATE_WAIT.",
+    )
+    api_max_inflight: int | None = Field(
+        default=None,
+        description="Concurrent hosted calls per service in api mode (default 8). Legacy name: BODHAN_API_MAX_INFLIGHT.",
+    )
     asr_base: str | None = Field(default=None, description="Local-mode ASR base URL. Legacy name: ASR_BASE.")
     mt_base: str | None = Field(default=None, description="Local-mode single MT base URL. Legacy name: MT_BASE.")
     mt_bases: str | None = Field(
@@ -392,6 +410,10 @@ class PipelineSettings(ConfigGroup):
         description="Maximum fraction of speech allowed to use degraded fallbacks. Legacy name: FALLBACK_MAX_FRAC.",
     )
     retries: int | None = Field(default=None, description="HTTP retries per service call. Legacy name: DUB_RETRIES.")
+    retries_429: int | None = Field(
+        default=None,
+        description="Separate retry budget for HTTP 429 answers (default 5). Legacy name: DUB_429_RETRIES.",
+    )
     retry_deadline: float | None = Field(
         default=None,
         description="Overall deadline for retrying one service call, seconds. Legacy name: DUB_RETRY_DEADLINE.",

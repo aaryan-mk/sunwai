@@ -15,6 +15,11 @@ Bodhan ASR/MT/TTS endpoints and credentials.
 | `SUNWAI_BODHAN__API_BASE` | `BODHAN_API_BASE` | Hosted Bodhan API base URL. |
 | `SUNWAI_BODHAN__API_MT_FANOUT` | `BODHAN_API_MT_FANOUT` | Logical MT replica count in api mode (sizes worker pools). |
 | `SUNWAI_BODHAN__API_TTS_FANOUT` | `BODHAN_API_TTS_FANOUT` | Logical TTS replica count in api mode (sizes worker pools). |
+| `SUNWAI_BODHAN__API_RPM_ASR` | `BODHAN_API_RPM_ASR` | Hosted ASR requests per minute across all processes (default 60). |
+| `SUNWAI_BODHAN__API_RPM_MT` | `BODHAN_API_RPM_MT` | Hosted MT requests per minute (default 100). |
+| `SUNWAI_BODHAN__API_RPM_TTS` | `BODHAN_API_RPM_TTS` | Hosted TTS requests per minute (default 8). |
+| `SUNWAI_BODHAN__API_RATE_WAIT` | `BODHAN_API_RATE_WAIT` | Longest a call waits for the hosted rate window, seconds (default 300). |
+| `SUNWAI_BODHAN__API_MAX_INFLIGHT` | `BODHAN_API_MAX_INFLIGHT` | Concurrent hosted calls per service in api mode (default 8). |
 | `SUNWAI_BODHAN__ASR_BASE` | `ASR_BASE` | Local-mode ASR base URL. |
 | `SUNWAI_BODHAN__MT_BASE` | `MT_BASE` | Local-mode single MT base URL. |
 | `SUNWAI_BODHAN__MT_BASES` | `MT_BASES` | Local-mode comma-separated MT replica URLs. |
@@ -172,6 +177,7 @@ Pipeline-wide limits, retries and expression.
 | `SUNWAI_PIPELINE__MAX_AUDIO_S` | `PIPE_MAX_AUDIO_S` | Longest audio accepted from a service, seconds. |
 | `SUNWAI_PIPELINE__FALLBACK_MAX_FRAC` | `FALLBACK_MAX_FRAC` | Maximum fraction of speech allowed to use degraded fallbacks. |
 | `SUNWAI_PIPELINE__RETRIES` | `DUB_RETRIES` | HTTP retries per service call. |
+| `SUNWAI_PIPELINE__RETRIES_429` | `DUB_429_RETRIES` | Separate retry budget for HTTP 429 answers (default 5). |
 | `SUNWAI_PIPELINE__RETRY_DEADLINE` | `DUB_RETRY_DEADLINE` | Overall deadline for retrying one service call, seconds. |
 | `SUNWAI_PIPELINE__SLOTS` | `DUB_SLOTS` | Enable cross-process service concurrency slots. |
 | `SUNWAI_PIPELINE__SLOT_DIR` | `DUB_SLOT_DIR` | Directory holding the cross-process slot lock files. |

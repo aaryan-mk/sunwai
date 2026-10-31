@@ -2,6 +2,7 @@
 import importlib
 import json
 import logging
+import time
 
 import pytest
 
@@ -219,13 +220,14 @@ def test_bodhan_cfg_modes(monkeypatch):
 def dp(monkeypatch, tmp_path, mode):
     monkeypatch.setenv("DUB_SLOT_DIR", str(tmp_path)); monkeypatch.setenv("BODHAN_MODE", mode)
     cfg()
+    import sunwai.clients.rate_limit as rate_limit
     import sunwai.clients.service_calls as calls
     import sunwai.clients.service_endpoints as endpoints
     import sunwai.pipeline.engine as engine
     import sunwai.pipeline.stages.mt as mt
     import sunwai.pipeline.support.concurrency as concurrency
 
-    for module in (endpoints, concurrency, calls, mt, engine):      # dependency order: each re-reads the environment
+    for module in (endpoints, rate_limit, concurrency, calls, mt, engine):      # dependency order: each re-reads the environment
         importlib.reload(module)
     return engine
 
@@ -244,8 +246,8 @@ def test_bodhan_requests_both_modes(monkeypatch, tmp_path, mode, base_re):
     u, kw = s.calls[0]
     assert u.startswith(base_re) and u.endswith("/v1/chat/completions") and kw["headers"] == {**hdr, "Content-Type": "application/json"}
     assert kw["json"] == {"model": "indic-translate", "messages": [{"role": "user", "content": "hello"}], "target_language": "hi"}
-    s = Sess(Resp(200, content=b"WAVDATA"))
-    assert D.bodhan_tts(s, BSECRET, "hi", "hi", "Amit", style="calm") == b"WAVDATA"
+    s = Sess(Resp(200, content=b"RIFF\x00\x00\x00\x00WAVEDATA"))
+    assert D.bodhan_tts(s, BSECRET, "hi", "hi", "Amit", style="calm") == b"RIFF\x00\x00\x00\x00WAVEDATA"
     u, kw = s.calls[0]
     assert u.startswith(base_re) and u.endswith("/v1/audio/speech") and kw["headers"] == {**hdr, "Content-Type": "application/json"}
     assert kw["json"] == {"model": "indic-speak", "input": "hi", "voice": "Amit", "instructions": json.dumps({"lang": "hi", "style": "calm"})}
@@ -292,3 +294,133 @@ def test_explicit_gemini_key_honoured(monkeypatch):
     L = llm(); s = Sess(GEM_OK)
     L.generate_text("p", key="explicit-k", session=s)
     assert s.calls[0][1]["headers"] == {"x-goog-api-key": "explicit-k"}
+
+# ---------------------------------------------------------------- hosted-API limits / Retry-After / audio normalisation
+class RespH(Resp):
+    def __init__(self, code=200, js=None, content=b"", headers=None):
+        super().__init__(code, js, content)
+        self.headers = headers or {}
+
+
+def _fresh(monkeypatch, tmp_path, mode="api", **env):
+    for k, v in env.items():
+        monkeypatch.setenv(k, str(v))
+    return dp(monkeypatch, tmp_path, mode)
+
+
+def test_parse_retry_after(monkeypatch, tmp_path):
+    D = _fresh(monkeypatch, tmp_path)
+    assert D.parse_retry_after("58") == 58.0 and D.parse_retry_after(" 2.5 ") == 2.5
+    assert D.parse_retry_after(None) is None and D.parse_retry_after("") is None and D.parse_retry_after("soon") is None
+    assert D.parse_retry_after("99999") == 300.0 and D.parse_retry_after("-4") == 0.0
+    import email.utils
+    d = D.parse_retry_after(email.utils.formatdate(time.time() + 30, usegmt=True))
+    assert 20 <= d <= 31
+
+
+def test_429_retry_after_is_honoured_and_does_not_use_retries(monkeypatch, tmp_path):
+    D = _fresh(monkeypatch, tmp_path)
+    slept = []
+    monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
+    seq = [RespH(429, {}, headers={"Retry-After": "58"}), RespH(200, {"ok": 1})]
+    r = D._with_retries(lambda t: seq.pop(0), retries=0, stage="tts")
+    assert r.status_code == 200 and max(slept) >= 58
+    # the 429 told every process to pause: the stage gate carries blocked_until
+    st = json.load(open(tmp_path / "tts.rate.json"))
+    assert st["blocked_until"] > time.time() + 40
+
+
+def test_429_retry_after_beyond_deadline_fails_fast(monkeypatch, tmp_path):
+    D = _fresh(monkeypatch, tmp_path)
+    slept = []
+    monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
+    n = []
+    with pytest.raises(RuntimeError):
+        D._with_retries(lambda t: (n.append(1), RespH(429, {}, headers={"Retry-After": "200"}))[1], deadline=30, stage="tts")
+    assert len(n) == 1 and not slept
+
+
+def test_429_has_own_bounded_budget(monkeypatch, tmp_path):
+    D = _fresh(monkeypatch, tmp_path, DUB_429_RETRIES=2)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    n = []
+    with pytest.raises(RuntimeError):
+        D._with_retries(lambda t: (n.append(1), RespH(429, {}, headers={"Retry-After": "1"}))[1], retries=5, stage="mt")
+    assert len(n) == 3          # first try + DUB_429_RETRIES
+
+
+def test_api_mode_500_retried_once_local_normal(monkeypatch, tmp_path):
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    D = _fresh(monkeypatch, tmp_path, "api")
+    n = []
+    with pytest.raises(RuntimeError):
+        D._with_retries(lambda t: (n.append(1), RespH(500, {}))[1], retries=3, stage="tts")
+    assert len(n) == 2
+    D = _fresh(monkeypatch, tmp_path, "local")
+    n.clear()
+    with pytest.raises(RuntimeError):
+        D._with_retries(lambda t: (n.append(1), RespH(500, {}))[1], retries=3, stage="tts")
+    assert len(n) == 4
+    n.clear()      # 503 is still retried in api mode
+    D = _fresh(monkeypatch, tmp_path, "api")
+    with pytest.raises(RuntimeError):
+        D._with_retries(lambda t: (n.append(1), RespH(503, {}))[1], retries=3, stage="tts")
+    assert len(n) == 4
+
+
+def test_rate_gate_window_and_block(monkeypatch, tmp_path):
+    import requests
+    D = _fresh(monkeypatch, tmp_path)
+    g = D._RateGate("x", 3, str(tmp_path))
+    for _ in range(3):
+        assert g.acquire(0.1) < 0.1
+    with pytest.raises(requests.exceptions.Timeout):
+        g.acquire(0.2)                             # 4th inside the 60 s window cannot fit a 0.2 s budget
+    g2 = D._RateGate("y", 100, str(tmp_path))       # a separate instance (= another process) sees a server-told block
+    g2.block(30)
+    with pytest.raises(requests.exceptions.Timeout):
+        D._RateGate("y", 100, str(tmp_path)).acquire(0.2)
+
+
+def test_rate_gate_used_only_in_api_mode_with_defaults(monkeypatch, tmp_path):
+    import requests
+    D = _fresh(monkeypatch, tmp_path, "api")
+    assert D.rate_gate("tts").rpm == 8 and D.rate_gate("mt").rpm == 100 and D.rate_gate("asr").rpm == 60
+    monkeypatch.setenv("BODHAN_API_RPM_TTS", "1")
+    D._GATES.clear(); D._LIMITERS.clear()
+    with D.inflight("tts", wait=1, rate_wait=0.1):
+        pass
+    with pytest.raises(requests.exceptions.Timeout):
+        with D.inflight("tts", wait=1, rate_wait=0.1):
+            pass
+    assert D._LIMITERS["tts"].limit == 8              # hosted per-key Max_parallel_requests=10 -> 8 in flight
+    D = _fresh(monkeypatch, tmp_path, "local")
+    assert D.rate_gate("tts") is None
+
+
+def test_api_429_via_bodhan_tts_waits_then_succeeds(monkeypatch, tmp_path):
+    D = _fresh(monkeypatch, tmp_path, "api", BODHAN_API_RPM_TTS=1000)
+    slept, clock = [], [time.time()]
+    monkeypatch.setattr(time, "sleep", lambda s: (slept.append(s), clock.__setitem__(0, clock[0] + s)))
+    monkeypatch.setattr(time, "time", lambda: clock[0])      # fake clock: the 58 s Retry-After (rate gate pause) costs no real time
+    wav = b"RIFF\x00\x00\x00\x00WAVEfmt "
+    s = Sess(RespH(429, {"detail": "Maximum rate limit reached for the model"}, headers={"Retry-After": "58"}), RespH(200, content=wav, headers={"Content-Type": "audio/mpeg"}))
+    assert D.bodhan_tts(s, BSECRET, "hi", "hi", "Amit") == wav
+    assert len(s.calls) == 2 and any(x >= 58 for x in slept)
+
+
+def test_tts_wav_normalisation(monkeypatch, tmp_path):
+    import io
+    import shutil
+    import subprocess
+    import wave
+    D = _fresh(monkeypatch, tmp_path, "api")
+    riff = b"RIFF\x24\x00\x00\x00WAVEfmt "
+    assert D._tts_wav(riff) is riff
+    if shutil.which("ffmpeg"):
+        mp3 = subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=440:d=0.5", "-f", "mp3", "pipe:1"], capture_output=True).stdout
+        w = wave.open(io.BytesIO(D._tts_wav(mp3)))
+        assert (w.getframerate(), w.getnchannels(), w.getsampwidth()) == (24000, 1, 2) and 0.4 < w.getnframes() / 24000 < 0.7
+    with pytest.raises(RuntimeError) as e:
+        D._tts_wav(b'{"error":{"message":"SECRETBODY"}}')
+    assert "SECRETBODY" not in str(e.value)

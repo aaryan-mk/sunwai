@@ -13,6 +13,7 @@ import requests
 
 log = logging.getLogger(__name__)
 
+from sunwai.clients.rate_limit import api_mode, api_rate_wait, rate_gate
 from sunwai.clients.service_endpoints import MT_BASES, TTS_BASES
 from sunwai.pipeline.support.env import _env_num
 
@@ -210,13 +211,33 @@ class _SlotLimiter:
 _LIMITERS = {}
 
 
-def inflight(stage, wait=None):
+class _Gated:
+    """A slot context that first waits for the stage's hosted rate window."""
+
+    def __init__(self, inner, gate, rate_wait):
+        self.inner, self.gate, self.rate_wait = inner, gate, rate_wait
+
+    def __enter__(self):
+        self.gate.acquire(self.rate_wait)  # raises requests Timeout when the budget cannot cover the rate window
+        return self.inner.__enter__()
+
+    def __exit__(self, *a):
+        return self.inner.__exit__(*a)
+
+
+def inflight(stage, wait=None, rate_wait=None):
     """`with inflight("tts"):` around ONE service call. Caps (env, across all chunk processes): ASR_MAX_INFLIGHT=8,
-    MT_MAX_INFLIGHT=4 x replicas, TTS_MAX_INFLIGHT=4 x replicas; DUB_SLOTS=0 disables."""
+    MT_MAX_INFLIGHT=4 x replicas, TTS_MAX_INFLIGHT=4 x replicas; DUB_SLOTS=0 disables. In api mode the default is
+    BODHAN_API_MAX_INFLIGHT=8 and each call first passes the stage's requests-per-minute gate (waiting up to ``rate_wait``)."""
     lim = _LIMITERS.get(stage)
     if lim is None:
         default = {"asr": 8, "mt": 4 * max(1, len(MT_BASES)), "tts": 4 * max(1, len(TTS_BASES))}[stage]
+        if api_mode():  # hosted: Max_parallel_requests=10 per API key -> stay at <= 8 in flight per service
+            default = _env_num("BODHAN_API_MAX_INFLIGHT", 8, int)
         lim = _LIMITERS.setdefault(stage, _SlotLimiter(stage, _env_num(f"{stage.upper()}_MAX_INFLIGHT", default, int)))
+    gate = rate_gate(stage)
+    if gate is not None:
+        return _Gated(lim(wait), gate, api_rate_wait() if rate_wait is None else rate_wait)
     return lim(wait)
 
 
