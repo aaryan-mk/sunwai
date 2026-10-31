@@ -144,7 +144,7 @@ Results that are degraded (`FitResult`, `RepairResult`, `GateDecision`) carry a 
 
 ## Revisions, fencing and restart
 
-Edits, undo and expression changes create new revisions in an append-only store kept separate from job snapshots. Operation records plus reconciliation tie the two together; there is no multi-file transaction. Idempotency keys make duplicate submissions safe. On restart the server reconciles interrupted edits, reclaims expired leases and resumes jobs that still need work.
+Edits, undo and expression changes create new revisions in an append-only store kept separate from job snapshots. Operation records plus reconciliation tie the two together; there is no multi-file transaction. Idempotency keys make duplicate submissions safe. On restart the server reconciles interrupted edits, takes over stale locks and resumes jobs that still need work.
 
 ## Live controls
 
