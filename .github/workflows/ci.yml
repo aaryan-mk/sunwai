@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpu:
+    name: Lint, types, tests (CPU only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      # TODO: pin actions to commit SHAs before release.
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version: ${{ matrix.python-version }}
+      - name: Install CPU development environment
+        run: uv sync --extra dev --frozen
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format
+        run: uv run ruff format --check .
+      - name: Type check
+        run: uv run mypy src/sunwai
+      - name: Unit and contract tests
+        run: uv run pytest tests/unit tests/contracts -q
+
+  integration:
+    name: CPU integration (ffmpeg)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: cpu
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+          python-version: "3.11"
+      - name: Install CPU development environment
+        run: uv sync --extra dev --frozen
+      - name: Integration tests
+        run: uv run pytest tests/integration -q

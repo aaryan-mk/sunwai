@@ -1,31 +1,34 @@
-.PHONY: install format lint typecheck test check api lipsync-worker config-map
-
-PY ?= python
+.PHONY: install format lint typecheck test test-integration check api lipsync-worker clean
 
 install:
-	$(PY) -m pip install -e ".[dev]"
+	uv sync --extra dev --frozen
 
 format:
-	$(PY) -m ruff format .
-	$(PY) -m ruff check --fix .
+	uv run ruff format .
+	uv run ruff check --fix .
 
 lint:
-	$(PY) -m ruff check .
-	$(PY) -m ruff format --check .
+	uv run ruff check .
+	uv run ruff format --check .
 
 typecheck:
-	$(PY) -m mypy
+	uv run mypy src/sunwai
 
 test:
-	$(PY) -m pytest
+	uv run pytest tests/unit tests/contracts -q
+
+test-integration:
+	uv run pytest tests/integration -q
 
 check: lint typecheck test
 
 api:
-	$(PY) -m sunwai.cli serve
+	uv run sunwai serve --host 127.0.0.1 --port 8000
 
+# Usage: make lipsync-worker ROOT=./var/jobs
+ROOT ?= ./var/jobs
 lipsync-worker:
-	$(PY) -m sunwai.cli worker lipsync --root "$${DUB_ROOT:-./jobs}" --id w1
+	uv run sunwai worker lipsync --root $(ROOT)
 
-config-map:
-	$(PY) -m sunwai.cli config map
+clean:
+	rm -rf .pytest_cache .mypy_cache .ruff_cache build dist
