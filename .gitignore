@@ -21,8 +21,8 @@ cookies*.txt
 ctl_token
 
 # Runtime state, media and model weights
-jobs/
-var/
+/jobs/
+/var/
 *.mp4
 *.wav
 *.pt
@@ -30,9 +30,9 @@ var/
 *.ckpt
 *.onnx
 *.safetensors
-checkpoints/
-models/
-latentsync/
+/checkpoints/
+/models/
+/latentsync/
 
 # Editors
 .idea/
