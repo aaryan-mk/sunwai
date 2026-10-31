@@ -124,9 +124,8 @@ convention = "google"
 [tool.ruff.format]
 # Engine modules are formatted when they are decomposed; reformatting them wholesale would bury the history.
 exclude = [
-  "src/sunwai/pipeline/engine.py", "src/sunwai/pipeline/fitting/fit_stage.py", "src/sunwai/planning/*.py",
-  "src/sunwai/jobs/language_scheduler.py", "src/sunwai/control/*.py", "src/sunwai/server/legacy_app.py",
-  "src/sunwai/server/routers/control.py", "src/sunwai/lipsync/*.py", "src/sunwai/workers/*.py", "src/sunwai/mirrors/*.py",
+  "src/sunwai/pipeline/engine.py", "src/sunwai/pipeline/fitting/fit_stage.py", "src/sunwai/server/legacy_app.py",
+  "src/sunwai/server/routers/control.py",
   "src/sunwai/clients/llm.py", "tests/unit/test_backend_switch.py", "tests/unit/test_crash_window.py",
   "tests/unit/test_language_scheduler.py",
 ]
