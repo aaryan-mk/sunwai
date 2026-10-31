@@ -153,11 +153,18 @@ Buttons, transcript edits and the chat planner all go through `ActionService.sub
 
 ## Status of the extraction
 
-The package layout above is the target. What exists today:
+What is in the repository today:
 
-- `core/`, `clients/`, `pipeline/` (Stage protocol, runner, workflow, stages), `lipsync/`, `control/`, `server/`, `workers/`,
-  `planning/`, `jobs/` and `mirrors/` are in place and covered by offline tests.
-- `storage/`, `media/`, `language/` and the typed job repository are planned; their logic currently lives inside the engine
-  and server modules and is being moved out module by module with tests kept green at each step.
-- Items in the sections above that name `jobs/state.py`, `workers/leases.py`, `ActionService.submit()` guards and artifact
-  manifests describe the target behaviour; the filesystem formats used today are unchanged from the prototype.
+- **Implemented and tested**: `core/` (typed settings and legacy env mapping), `clients/`, `pipeline/` (Stage protocol, runner,
+  `DubWorkflow`, typed `Segment`, one module per stage), `planning/` (planner split into focused modules plus the `voices/`
+  package with `VoicePlanner`), `jobs/scheduler/` (add-language scheduler), `control/` (actions, chat, expression, revision
+  store, guards), `server/` (app factory and container, routers, services, file repository), `lipsync/`, `workers/` and
+  `mirrors/`.
+- **Not built yet**: `storage/` (artifact manifests and cache), `workers/leases.py` fencing tokens, `jobs/state.py` transition
+  rules and the `language/` modules beyond number normalisation. The sections above that describe them are the target
+  behaviour; the on-disk formats are unchanged from the prototype.
+- **Moved, not yet rewritten**: the stage implementations (`stages/tts.py`, `mix.py`, `speakers.py`, `asr.py`, ...) and
+  `planning/planner.py` and `fitting/fit_stage.py` still contain long functions from the prototype. Golden tests for the TTS
+  stage pin their behaviour for the planned split into `SegmentSynthesizer`, `SentenceSplitter` and `RunawayRepairLadder`.
+- **Relaxed rules**: modules listed in the `[tool.ruff.lint.per-file-ignores]` and `[[tool.mypy.overrides]]` blocks of
+  `pyproject.toml` are exempt from strict lint and typing until they are rewritten. Everything else is strict.
