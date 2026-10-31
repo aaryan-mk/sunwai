@@ -24,7 +24,12 @@ class SynthClaims:
             if key in store.running:
                 raise CtlError(409, "busy", "this line already has an operation running")
             if len(store.running) >= max_synth:
-                raise CtlError(429, "one_synthesis_per_job", "another synthesis is running for this job; try again when it finishes", retry_after=5)
+                raise CtlError(
+                    429,
+                    "one_synthesis_per_job",
+                    "another synthesis is running for this job; try again when it finishes",
+                    retry_after=5,
+                )
             if self.guard:
                 self.guard.synth_acquire()
             store.running[key] = "pending"

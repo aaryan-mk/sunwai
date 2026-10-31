@@ -28,7 +28,9 @@ def build_parser() -> argparse.ArgumentParser:
 def run(args: argparse.Namespace) -> Any:
     """Dispatch the sub-command and return its result."""
     if args.cmd == "preview":
-        return do_expression_resynth(args.out, args.lang, args.seg, args.intent, args.expected_revision, args.idem, job_id=args.job_id)
+        return do_expression_resynth(
+            args.out, args.lang, args.seg, args.intent, args.expected_revision, args.idem, job_id=args.job_id
+        )
     if args.cmd == "apply":
         return apply_candidate(args.out, args.seg, args.cand, args.expected_revision, lang=args.lang)
     if args.cmd == "undo":

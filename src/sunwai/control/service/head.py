@@ -38,19 +38,40 @@ def diverged(head: Record, seg: Record) -> bool:
     return head.get("live_hist") is not None and head["live_hist"] != history_length(seg)
 
 
-def reconciled_revision(job_id: str, lang: str, chunk: int, seg_id: str, seg: Record, chunk_start: float, head: Record | None, audio_hash: str) -> Record:
+def reconciled_revision(
+    job_id: str,
+    lang: str,
+    chunk: int,
+    seg_id: str,
+    seg: Record,
+    chunk_start: float,
+    head: Record | None,
+    audio_hash: str,
+) -> Record:
     """Build the revision that adopts the live segment: ``base`` (rev 0) or ``legacy`` (an old-route edit)."""
     provenance = "base" if head is None else "legacy"
     return {
-        "job_id": job_id, "lang": lang, "chunk_id": int(chunk), "segment_id": seg_id,
-        "parent_revision": head["revision"] if head else None, "source_revision": 0,
-        "speaker_id": seg.get("speaker"), "voice_plan_id": None,
-        "slot_start_ms": int((chunk_start + seg.get("start", 0)) * 1000), "slot_end_ms": int((chunk_start + seg.get("end", 0)) * 1000),
-        "raw_source_text": seg.get("src_text", ""), "display_text": seg.get("tgt_text", ""), "spoken_text": spoken_text(seg),
+        "job_id": job_id,
+        "lang": lang,
+        "chunk_id": int(chunk),
+        "segment_id": seg_id,
+        "parent_revision": head["revision"] if head else None,
+        "source_revision": 0,
+        "speaker_id": seg.get("speaker"),
+        "voice_plan_id": None,
+        "slot_start_ms": int((chunk_start + seg.get("start", 0)) * 1000),
+        "slot_end_ms": int((chunk_start + seg.get("end", 0)) * 1000),
+        "raw_source_text": seg.get("src_text", ""),
+        "display_text": seg.get("tgt_text", ""),
+        "spoken_text": spoken_text(seg),
         "live_hist": history_length(seg),
         "expression": {"intent": None, "emotion": None, "confidence": None, "provenance": provenance},
-        "style": None, "tempo_factor": 1.0, "audio_hash": audio_hash,
-        "subtitle_revision": (head or {}).get("subtitle_revision", 0), "status": "active", "ts": utcnow(),
+        "style": None,
+        "tempo_factor": 1.0,
+        "audio_hash": audio_hash,
+        "subtitle_revision": (head or {}).get("subtitle_revision", 0),
+        "status": "active",
+        "ts": utcnow(),
     }
 
 
@@ -71,7 +92,9 @@ def find_segment(deps: Any, job_dir: Any, lang: str, chunk: int, seg_id: str) ->
     raise CtlError(404, "unknown_segment", "segment not found")
 
 
-def reconcile_head(deps: Any, job_dir: Any, job_id: str, store: JobStore, lang: str, chunk: int, seg_id: str) -> HeadView:
+def reconcile_head(
+    deps: Any, job_dir: Any, job_id: str, store: JobStore, lang: str, chunk: int, seg_id: str
+) -> HeadView:
     """Reconcile the live segment into the revision log (a rev-0 base, or a ``legacy`` revision after an old-route edit).
 
     A divergence is NEVER reconciled into a ``legacy`` revision while an operation of ours has the line claimed, while an
@@ -88,5 +111,7 @@ def reconcile_head(deps: Any, job_dir: Any, job_id: str, store: JobStore, lang: 
                 if key in store.running or live.get("in_flight") or live.get("owned"):
                     return HeadView(head, seg, chunk_start, store, key)
             audio_hash = deps.audio_hash(job_dir, lang, chunk, seg.get("tgt_text", ""))
-            head = store.add_revision(key, reconciled_revision(job_id, lang, chunk, seg_id, seg, chunk_start, head, audio_hash))
+            head = store.add_revision(
+                key, reconciled_revision(job_id, lang, chunk, seg_id, seg, chunk_start, head, audio_hash)
+            )
     return HeadView(head, seg, chunk_start, store, key)

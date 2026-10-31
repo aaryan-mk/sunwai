@@ -10,11 +10,29 @@ from sunwai.control.errors import CtlError
 from sunwai.control.guard import LANG_RE
 from sunwai.control.tools import BadArgs, validate_args
 
-SERVER_TYPES = {"edit_line", "undo_line", "redo_line", "change_expression", "retime", "regenerate_chunk", "change_voice", "add_language", "report_issue"}
+SERVER_TYPES = {
+    "edit_line",
+    "undo_line",
+    "redo_line",
+    "change_expression",
+    "retime",
+    "regenerate_chunk",
+    "change_voice",
+    "add_language",
+    "report_issue",
+}
 SEG_TYPES = {"edit_line", "undo_line", "redo_line", "change_expression", "retime"}
 COMMIT_TYPES = {"edit_line", "undo_line", "redo_line", "add_language", "regenerate_chunk", "change_voice"}
 PREVIEW_TYPES = {"change_expression", "retime"}
-ENVELOPE_FIELDS = {"action_id", "expected_revision", "idempotency_key", "type", "args", "preview_only", "confirmation_token"}
+ENVELOPE_FIELDS = {
+    "action_id",
+    "expected_revision",
+    "idempotency_key",
+    "type",
+    "args",
+    "preview_only",
+    "confirmation_token",
+}
 MAX_CHUNK = 9999
 MAX_CANDIDATE = 10**6
 
@@ -116,7 +134,9 @@ def parse_request(body: dict[str, Any], addlang_on: bool) -> ActionRequest:
         raise CtlError(403, "feature_disabled", "Adding a language while watching is not available yet.")
     _check_envelope(body)
     args = dict(body.get("args") or {})
-    apply_cand = _numeric_string_to_int(args.pop("apply_candidate", None))  # tolerate numeric strings from older clients
+    apply_cand = _numeric_string_to_int(
+        args.pop("apply_candidate", None)
+    )  # tolerate numeric strings from older clients
     if apply_cand is not None and typ != "change_expression":
         raise CtlError(422, "invalid_args", "apply_candidate is only valid for change_expression")
     pgen = args.pop("playback_generation", None) if typ == "add_language" else None
@@ -140,8 +160,12 @@ def parse_request(body: dict[str, Any], addlang_on: bool) -> ActionRequest:
     expected = body.get("expected_revision")
     preview_only = typ in PREVIEW_TYPES and apply_cand is None
     significant = core if typ != "add_language" else {"lang": core["lang"]}
-    payload_hash = sha(canon({"t": typ, "a": significant, "l": lang, "c": chunk, "x": expected, "p": preview_only, "ac": apply_cand}))
-    return ActionRequest(typ, core, lang, chunk, apply_cand, idem, expected, preview_only, payload_hash, body.get("confirmation_token"))
+    payload_hash = sha(
+        canon({"t": typ, "a": significant, "l": lang, "c": chunk, "x": expected, "p": preview_only, "ac": apply_cand})
+    )
+    return ActionRequest(
+        typ, core, lang, chunk, apply_cand, idem, expected, preview_only, payload_hash, body.get("confirmation_token")
+    )
 
 
 def summarise(typ: str, args: dict[str, Any]) -> str:

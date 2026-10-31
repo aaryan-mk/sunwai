@@ -32,7 +32,9 @@ _REPLACEMENT_MARK = re.compile(
     r"|=|\b(?:this|following|that|it)\s*:)\s*$",
     re.I,
 )
-_IDENTIFYING_AFTER = re.compile(r"^\s*(?:to|with|into|should|so|and)\b", re.I)  # '"X" to end with a period': X identifies the existing line
+_IDENTIFYING_AFTER = re.compile(
+    r"^\s*(?:to|with|into|should|so|and)\b", re.I
+)  # '"X" to end with a period': X identifies the existing line
 _ZERO_WIDTH = re.compile("[​‌‍﻿]")
 _EDGE_PUNCTUATION = " .,;:!?।॥…-"
 

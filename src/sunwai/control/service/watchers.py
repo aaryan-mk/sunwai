@@ -13,7 +13,16 @@ from sunwai.control.hooks import NotImplementedHook
 from sunwai.control.service.opstate import OperationRecorder
 
 
-async def watch_lipsync(deps: Any, recorder: OperationRecorder, op: dict[str, Any], job_dir: Any, lang: str, chunk: int, rv: dict[str, Any], started: float) -> None:
+async def watch_lipsync(
+    deps: Any,
+    recorder: OperationRecorder,
+    op: dict[str, Any],
+    job_dir: Any,
+    lang: str,
+    chunk: int,
+    rv: dict[str, Any],
+    started: float,
+) -> None:
     """Wait until the line's lip-sync is real, then complete the operation.
 
     ``lipsync_worker3`` already re-lips any chunk whose ``dub_<lang>.mp4`` is newer than its ``dub_<lang>_lipsync.mp4`` (3 s
@@ -33,8 +42,12 @@ async def watch_lipsync(deps: Any, recorder: OperationRecorder, op: dict[str, An
                 recorder.stage(op, "complete")
                 store.emit("op.lipsync_ready", job_id=job_id, operation_id=op["operation_id"], revision=rv["revision"])
                 store.emit(
-                    "op.done", job_id=job_id, operation_id=op["operation_id"], action_id=op["action_id"],
-                    revision=rv["revision"], elapsed_s=round(time.time() - started, 2),
+                    "op.done",
+                    job_id=job_id,
+                    operation_id=op["operation_id"],
+                    action_id=op["action_id"],
+                    revision=rv["revision"],
+                    elapsed_s=round(time.time() - started, 2),
                 )
                 return
         except Exception:
@@ -45,8 +58,13 @@ async def watch_lipsync(deps: Any, recorder: OperationRecorder, op: dict[str, An
     store.put_op(op)  # audio is live; mouth movements are still the original frames
     store.emit("op.lipsync_pending", job_id=job_id, operation_id=op["operation_id"], revision=rv["revision"])
     store.emit(
-        "op.done", job_id=job_id, operation_id=op["operation_id"], action_id=op["action_id"],
-        revision=rv["revision"], elapsed_s=round(time.time() - started, 2), lipsync_ready=False,
+        "op.done",
+        job_id=job_id,
+        operation_id=op["operation_id"],
+        action_id=op["action_id"],
+        revision=rv["revision"],
+        elapsed_s=round(time.time() - started, 2),
+        lipsync_ready=False,
     )
 
 
@@ -66,7 +84,9 @@ class TrackWatcher:
         self._release_language = release_language
         self._confirm_done = confirm_done
 
-    async def watch(self, op: dict[str, Any], lang: str, lkey: str, token: str | None = None, deadline: float | None = None) -> None:
+    async def watch(
+        self, op: dict[str, Any], lang: str, lkey: str, token: str | None = None, deadline: float | None = None
+    ) -> None:
         """Poll the language status until it is ready, fails, or the deadline passes.
 
         Done when the status says ready (``language.ready`` plus completion); failed when it says error or the status call
@@ -90,9 +110,13 @@ class TrackWatcher:
             self._unclaim(lkey)
             if not ok:
                 self._release_language(job_id, lang, op.get("error") or "operation did not complete")
-            self._confirm_done(token, ok)  # consumed only on terminal SUCCESS; a failure releases it so the confirmation can retry
+            self._confirm_done(
+                token, ok
+            )  # consumed only on terminal SUCCESS; a failure releases it so the confirmation can retry
 
-    async def _poll(self, op: dict[str, Any], job_id: str, lang: str, poll: float, started: float, deadline: float) -> bool:
+    async def _poll(
+        self, op: dict[str, Any], job_id: str, lang: str, poll: float, started: float, deadline: float
+    ) -> bool:
         max_errors = int(os.environ.get("DUB_CTL_LANG_MAX_ERRS", "5"))
         max_error_s = float(os.environ.get("DUB_CTL_LANG_MAX_ERR_S", "60"))
         errors, first_error = 0, None
@@ -107,7 +131,9 @@ class TrackWatcher:
                 errors += 1
                 first_error = first_error or time.time()
                 if errors >= max_errors or time.time() - first_error >= max_error_s:
-                    self.recorder.terminal(op, False, f"language status unavailable ({errors} consecutive errors: {type(exc).__name__})")
+                    self.recorder.terminal(
+                        op, False, f"language status unavailable ({errors} consecutive errors: {type(exc).__name__})"
+                    )
                     return False
                 await asyncio.sleep(poll)
                 continue
@@ -117,11 +143,28 @@ class TrackWatcher:
                 self.recorder.terminal(op, False, "language preparation failed")
                 return False
             await asyncio.sleep(poll)
-        self.recorder.terminal(op, False, "timed out waiting for the track (deadline passed; it may still finish in the background)")
+        self.recorder.terminal(
+            op, False, "timed out waiting for the track (deadline passed; it may still finish in the background)"
+        )
         return False
 
     def _finish_ready(self, op: dict[str, Any], lang: str, track: dict[str, Any], started: float) -> bool:
         op.update(audio_ready=True, lipsync_ready=track.get("lipsync_state") == "ready")
-        ready = ("language.ready", {"lang": lang, "ready_intervals": track.get("ready_intervals"), "audio_state": "ready", "lipsync_state": track.get("lipsync_state")})
-        done = ("op.done", {"operation_id": op["operation_id"], "action_id": op["action_id"], "elapsed_s": round(time.time() - started, 2)})
+        ready = (
+            "language.ready",
+            {
+                "lang": lang,
+                "ready_intervals": track.get("ready_intervals"),
+                "audio_state": "ready",
+                "lipsync_state": track.get("lipsync_state"),
+            },
+        )
+        done = (
+            "op.done",
+            {
+                "operation_id": op["operation_id"],
+                "action_id": op["action_id"],
+                "elapsed_s": round(time.time() - started, 2),
+            },
+        )
         return self.recorder.terminal(op, True, None, [ready, done])

@@ -78,14 +78,28 @@ def _apply_to_segment(seg: Segment, cand: dict[str, Any]) -> None:
     """Write the candidate's text and style into the segment; subtitles stay faithful unless a validated wording patch exists."""
     display = (cand.get("plan") or {}).get("wording_patch") or seg["tgt_text"]
     seg.update(
-        tgt_text=display, tts_text=cand["spoken_text"], tts_src=display, tts_by="m2", style=cand["style"],
-        style_src=("m2" if cand["style"] else None), tempo=cand["tempo_factor"], edited=True, overflow=False, overflow_s=0.0,
+        tgt_text=display,
+        tts_text=cand["spoken_text"],
+        tts_src=display,
+        tts_by="m2",
+        style=cand["style"],
+        style_src=("m2" if cand["style"] else None),
+        tempo=cand["tempo_factor"],
+        edited=True,
+        overflow=False,
+        overflow_s=0.0,
         expression={"intent": cand["intent"], "emotion": cand["style"], "confidence": None, "provenance": "button"},
     )
 
 
 def apply_candidate(
-    out_dir: str | Path, seg_id: str | int, cand_id: str, expected_revision: int, *, lang: str | None = None, remix: Remix | None = None
+    out_dir: str | Path,
+    seg_id: str | int,
+    cand_id: str,
+    expected_revision: int,
+    *,
+    lang: str | None = None,
+    remix: Remix | None = None,
 ) -> Revision:
     """Commit a ready candidate: swap the live audio, remix the chunk and append a new ``expression`` revision.
 
@@ -121,7 +135,10 @@ def apply_candidate(
         seg = find_segment(segments, seg_id)
         stale = cand["base_revision"] != head["revision"] or head["state_fp"] != state_fingerprint(out_dir, seg)
         if head["revision"] != int(expected_revision) or stale:
-            raise ExprError(409, f"stale: head {head['revision']}, expected {expected_revision}, candidate base {cand['base_revision']}")
+            raise ExprError(
+                409,
+                f"stale: head {head['revision']}, expected {expected_revision}, candidate base {cand['base_revision']}",
+            )
         if cand["status"] != "ready":
             raise ExprError(409, f"candidate not ready ({cand['status']})")
         if cand.get("applied"):
@@ -135,12 +152,30 @@ def apply_candidate(
             remix()
             # everything below must commit before the snapshot is dropped; append_revision is the commit point
             rec = make_record(
-                out_dir, seg, lang, number, head["revision"], "expression",
-                {"chunk_audio_hash": chunk_audio_hash(out_dir), "undo_target": head["revision"], "candidate_id": cand_id, "job_id": cand.get("job_id")},
+                out_dir,
+                seg,
+                lang,
+                number,
+                head["revision"],
+                "expression",
+                {
+                    "chunk_audio_hash": chunk_audio_hash(out_dir),
+                    "undo_target": head["revision"],
+                    "candidate_id": cand_id,
+                    "job_id": cand.get("job_id"),
+                },
             )
             snapshot_audio(out_dir, seg_id, number)
             write_json_atomic(cand_path, dict(cand, applied=number))
-            update_operation(out_dir, cand_id, state="running", stage="lip-syncing", revision=number, audio_ready=True, lipsync_ready=False)
+            update_operation(
+                out_dir,
+                cand_id,
+                state="running",
+                stage="lip-syncing",
+                revision=number,
+                audio_ready=True,
+                lipsync_ready=False,
+            )
             append_revision(out_dir, seg_id, rec)
         except BaseException:
             txn.rollback(number)
@@ -157,7 +192,9 @@ def _restore_candidate_and_operation(out_dir: Path, cand_path: Path, cand: dict[
     except Exception:
         pass
     try:
-        update_operation(out_dir, cand_id, state="error", stage="rolled back", lipsync_ready=False, error="apply rolled back")
+        update_operation(
+            out_dir, cand_id, state="error", stage="rolled back", lipsync_ready=False, error="apply rolled back"
+        )
     except Exception:
         pass
 
@@ -168,13 +205,21 @@ def _restore_segment_from(seg: Segment, target: Revision) -> None:
         seg.pop(key, None)
     seg.update({k: target[k] for k in ("tts_text", "tts_src", "tts_by") if target.get(k)})
     seg.update(
-        tgt_text=target["display_text"], style=target["style"], style_src=target.get("style_src"),
-        tempo=target["tempo_factor"], expression=target["expression"],
+        tgt_text=target["display_text"],
+        style=target["style"],
+        style_src=target.get("style_src"),
+        tempo=target["tempo_factor"],
+        expression=target["expression"],
     )
 
 
 def undo_revision(
-    out_dir: str | Path, seg_id: str | int, expected_revision: int, *, lang: str | None = None, remix: Remix | None = None
+    out_dir: str | Path,
+    seg_id: str | int,
+    expected_revision: int,
+    *,
+    lang: str | None = None,
+    remix: Remix | None = None,
 ) -> Revision:
     """Create a NEW revision that restores the audio, text and style of the head's ``undo_target``. Undo of an undo is a redo.
 
@@ -216,8 +261,17 @@ def undo_revision(
             write_json_atomic(out_dir / "segments.json", segments)
             remix()
             rec = make_record(
-                out_dir, seg, lang, number, head["revision"], "undo",
-                {"chunk_audio_hash": chunk_audio_hash(out_dir), "undo_target": head["revision"], "restores": target_number},
+                out_dir,
+                seg,
+                lang,
+                number,
+                head["revision"],
+                "undo",
+                {
+                    "chunk_audio_hash": chunk_audio_hash(out_dir),
+                    "undo_target": head["revision"],
+                    "restores": target_number,
+                },
             )
             snapshot_audio(out_dir, seg_id, number)
             append_revision(out_dir, seg_id, rec)

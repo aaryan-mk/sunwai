@@ -27,7 +27,9 @@ class ControlDeps(Protocol):
     def audio_hash(self, job_dir: Path, lang: str, chunk: int, text: str) -> str:
         """Return the hash of the line audio for ``text``."""
 
-    async def edit(self, job_id: str, lang: str, chunk: int, seg_id: str, text: str, expect: dict[str, Any]) -> dict[str, Any]:
+    async def edit(
+        self, job_id: str, lang: str, chunk: int, seg_id: str, text: str, expect: dict[str, Any]
+    ) -> dict[str, Any]:
         """Replace a line's text through the legacy edit flow; returns ``{"segment": ...}``."""
 
     async def undo(self, job_id: str, lang: str, chunk: int, seg_id: str, expect: dict[str, Any]) -> dict[str, Any]:

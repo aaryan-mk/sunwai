@@ -36,7 +36,14 @@ EXEC = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="
 
 
 async def _resynth_stub(
-    job_dir: Path, lang: str, chunk: int, segment_id: str, intent: str | None, base_text: str, tempo_factor: float | None, out_candidate_dir: Path
+    job_dir: Path,
+    lang: str,
+    chunk: int,
+    segment_id: str,
+    intent: str | None,
+    base_text: str,
+    tempo_factor: float | None,
+    out_candidate_dir: Path,
 ) -> Result:
     """Default for :data:`expression_resynth`: the expression pipeline is not installed."""
     raise NotImplementedHook("expression pipeline not installed")
@@ -63,7 +70,14 @@ async def _language_status_stub(job_id: str, lang: str) -> Result:
 
 
 async def _media_path_stub(
-    job_dir: Path, lang: str, chunk: int, segment_id: str, kind: str, m2_candidate_id: str | None, is_head: bool = True, m2_revision: int | None = None
+    job_dir: Path,
+    lang: str,
+    chunk: int,
+    segment_id: str,
+    kind: str,
+    m2_candidate_id: str | None,
+    is_head: bool = True,
+    m2_revision: int | None = None,
 ) -> Path:
     """Default for :data:`media_path`: no A/B audio is available."""
     raise NotImplementedHook("media not available")
@@ -96,7 +110,9 @@ def _run_coro_in_thread(coro_fn: Callable[..., Coroutine[Any, Any, Result]], *ar
     return asyncio.run(coro_fn(*args))
 
 
-def _expression_apply_start(job_dir: Path, lang: str, chunk: int, segment_id: str, candidate: Result) -> concurrent.futures.Future[Result]:
+def _expression_apply_start(
+    job_dir: Path, lang: str, chunk: int, segment_id: str, candidate: Result
+) -> concurrent.futures.Future[Result]:
     """Default for :data:`expression_apply_start`: run :data:`expression_apply` on the mutation pool."""
     return EXEC.submit(_run_coro_in_thread, expression_apply, job_dir, lang, chunk, segment_id, candidate)
 

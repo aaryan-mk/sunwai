@@ -39,7 +39,9 @@ def explain_action(actions: dict[str, dict[str, Any]], ops: list[dict[str, Any]]
     if action_id is not None:
         action = actions.get(action_id)
         if action is None:
-            return "I can't find that action in this job's log. " + (explain_action(actions, ops, None) if ordered else "")
+            return "I can't find that action in this job's log. " + (
+                explain_action(actions, ops, None) if ordered else ""
+            )
     else:
         if not ordered:
             return "Nothing has been done on this job yet, so there is nothing to explain."
@@ -48,6 +50,10 @@ def explain_action(actions: dict[str, dict[str, Any]], ops: list[dict[str, Any]]
     op = max(mine, key=lambda o: o.get("ts", "")) if mine else None
     args = {k: v for k, v in (action.get("args") or {}).items() if v is not None}
     what = ACTION_PHRASES.get(action["type"], action["type"])
-    where = f" (language {args['lang']}, chunk {args['chunk']}, line {args['segment_id']})" if "segment_id" in args and "chunk" in args else ""
+    where = (
+        f" (language {args['lang']}, chunk {args['chunk']}, line {args['segment_id']})"
+        if "segment_id" in args and "chunk" in args
+        else ""
+    )
     when = action.get("ts", "an unknown date")[:19].replace("T", " ")
     return f"On {when} UTC the studio {what}{where}; {_operation_state(op)}."

@@ -11,7 +11,16 @@ from typing import Any
 
 from sunwai.control.expression import engine_bridge
 from sunwai.control.expression.errors import ExprError, enabled
-from sunwai.control.expression.fitting import Take, TempoFn, TrimFn, TtsFn, ffmpeg_tempo, pad_to, synth_fit, wav_duration
+from sunwai.control.expression.fitting import (
+    Take,
+    TempoFn,
+    TrimFn,
+    TtsFn,
+    ffmpeg_tempo,
+    pad_to,
+    synth_fit,
+    wav_duration,
+)
 from sunwai.control.expression.fsutil import FileLock, read_json, sha256_file, write_json_atomic
 from sunwai.control.expression.planner import plan_expression
 from sunwai.control.expression.revisions import (
@@ -65,7 +74,15 @@ class CandidateSynthesizer:
     """Builds one candidate record: plan, synthesise, fit, repair once, then classify the outcome."""
 
     def __init__(
-        self, out_dir: Path, lang: str, seg: Segment, tts: TtsFn, trim: TrimFn, tempo_fn: TempoFn, slot_s: float, allowed_s: float
+        self,
+        out_dir: Path,
+        lang: str,
+        seg: Segment,
+        tts: TtsFn,
+        trim: TrimFn,
+        tempo_fn: TempoFn,
+        slot_s: float,
+        allowed_s: float,
     ) -> None:
         """Bind the line and the injected audio functions."""
         self.out_dir, self.lang, self.seg = out_dir, lang, seg
@@ -74,11 +91,28 @@ class CandidateSynthesizer:
 
     def _take(self, plan: dict[str, Any], voice: str, tag: str, cand_dir: Path) -> Take:
         return synth_fit(
-            plan["spoken_text"], self.lang, plan["style"], voice, cand_dir, tag,
-            tts=self.tts, trim=self.trim, tempo_fn=self.tempo_fn, allowed_s=self.allowed_s, slot_s=self.slot_s,
+            plan["spoken_text"],
+            self.lang,
+            plan["style"],
+            voice,
+            cand_dir,
+            tag,
+            tts=self.tts,
+            trim=self.trim,
+            tempo_fn=self.tempo_fn,
+            allowed_s=self.allowed_s,
+            slot_s=self.slot_s,
         )
 
-    def synthesise(self, rec: dict[str, Any], plan: dict[str, Any], intent: str, wording_patch: str | None, voice: str, cand_dir: Path) -> None:
+    def synthesise(
+        self,
+        rec: dict[str, Any],
+        plan: dict[str, Any],
+        intent: str,
+        wording_patch: str | None,
+        voice: str,
+        cand_dir: Path,
+    ) -> None:
         """Fill ``rec`` with the outcome of synthesis: one take, plus ONE duration-informed repair when it overruns."""
         cid = rec["candidate_id"]
         take = self._take(plan, voice, cid, cand_dir)
@@ -94,8 +128,12 @@ class CandidateSynthesizer:
         if take.fitted_s < self.slot_s:
             pad_to(take.path, self.slot_s)
         rec.update(
-            audio_path=str(take.path), audio_hash=sha256_file(take.path), raw_s=take.raw_s,
-            fitted_s=wav_duration(take.path), tempo_factor=take.tempo, status="ready",
+            audio_path=str(take.path),
+            audio_hash=sha256_file(take.path),
+            raw_s=take.raw_s,
+            fitted_s=wav_duration(take.path),
+            tempo_factor=take.tempo,
+            status="ready",
         )
 
     def settle_against_head(self, rec: dict[str, Any], lang: str, seg_id: str | int, base_revision: int) -> None:
@@ -170,9 +208,19 @@ def do_expression_resynth(
         if not (seg.get("tgt_text") or "").strip():
             raise ExprError(422, "segment has no spoken text")
         rec = _build_candidate(
-            out_dir, lang, seg, segments, head["revision"], intent or "", meter,
-            job_id=job_id, action_id=action_id, wording_patch=wording_patch,
-            voice_fn=voice_fn, trim=trim or engine_bridge.default_trim, tempo_fn=tempo_fn or ffmpeg_tempo,
+            out_dir,
+            lang,
+            seg,
+            segments,
+            head["revision"],
+            intent or "",
+            meter,
+            job_id=job_id,
+            action_id=action_id,
+            wording_patch=wording_patch,
+            voice_fn=voice_fn,
+            trim=trim or engine_bridge.default_trim,
+            tempo_fn=tempo_fn or ffmpeg_tempo,
         )
         rec["cost_this_call"] = meter.charged()
         write_json_atomic(expr_dir(out_dir) / "cands" / f"{rec['candidate_id']}.json", rec)
@@ -202,12 +250,28 @@ def _build_candidate(
     slot, allowed = slot_limits(segments, seg)
     cand_dir = expr_dir(out_dir) / "cands"
     cand_dir.mkdir(exist_ok=True)
-    voice = voice_fn(out_dir, lang, seg) if voice_fn else resolve_voice(out_dir, lang, seg)  # the voice plan is respected, never changed
+    voice = (
+        voice_fn(out_dir, lang, seg) if voice_fn else resolve_voice(out_dir, lang, seg)
+    )  # the voice plan is respected, never changed
     rec: dict[str, Any] = {
-        "candidate_id": cid, "operation_id": cid, "action_id": action_id, "job_id": job_id, "lang": lang,
-        "segment_id": seg["id"], "base_revision": base_revision, "intent": plan["intent"], "style": plan["style"],
-        "spoken_text": plan["spoken_text"], "plan": plan, "voice": voice, "slot_s": slot, "allowed_s": allowed,
-        "repair_used": False, "status": "running", "ts": time.time(), "cost": meter.cost,
+        "candidate_id": cid,
+        "operation_id": cid,
+        "action_id": action_id,
+        "job_id": job_id,
+        "lang": lang,
+        "segment_id": seg["id"],
+        "base_revision": base_revision,
+        "intent": plan["intent"],
+        "style": plan["style"],
+        "spoken_text": plan["spoken_text"],
+        "plan": plan,
+        "voice": voice,
+        "slot_s": slot,
+        "allowed_s": allowed,
+        "repair_used": False,
+        "status": "running",
+        "ts": time.time(),
+        "cost": meter.cost,
     }
     builder = CandidateSynthesizer(out_dir, lang, seg, meter, trim, tempo_fn, slot, allowed)
     try:

@@ -32,8 +32,14 @@ Response = tuple[int, dict[str, Any]]
 def new_operation(action_id: str, state: str, stage: str = "queued") -> Record:
     """Build a fresh operation record."""
     return {
-        "operation_id": "op_" + uuid.uuid4().hex[:12], "action_id": action_id, "state": state, "stage": stage,
-        "revision": None, "audio_ready": False, "lipsync_ready": False, "error": None,
+        "operation_id": "op_" + uuid.uuid4().hex[:12],
+        "action_id": action_id,
+        "state": state,
+        "stage": stage,
+        "revision": None,
+        "audio_ready": False,
+        "lipsync_ready": False,
+        "error": None,
     }
 
 
@@ -44,7 +50,9 @@ def synthesis_seconds(req: ActionRequest, head: Record | None) -> float:
     if req.typ == "regenerate_chunk":
         return 30.0
     if req.typ == "add_language":
-        return float(os.environ.get("DUB_CTL_ADDLANG_S", "120"))  # GPU work: counted against job + daily synthesis budgets
+        return float(
+            os.environ.get("DUB_CTL_ADDLANG_S", "120")
+        )  # GPU work: counted against job + daily synthesis budgets
     return 0.0
 
 
@@ -108,7 +116,12 @@ class ActionService:
             pass
 
     def _track_watcher(self, store: JobStore, job_id: str) -> TrackWatcher:
-        return TrackWatcher(OperationRecorder(store, job_id), lambda key: self.claims.release(store, key), self.release_language, self.confirm.done)
+        return TrackWatcher(
+            OperationRecorder(store, job_id),
+            lambda key: self.claims.release(store, key),
+            self.release_language,
+            self.confirm.done,
+        )
 
     # -------- public
     async def submit(self, job_id: str, body: dict[str, Any]) -> Response:
@@ -156,36 +169,60 @@ class ActionService:
         """
         expected = req.expected
         if not isinstance(expected, int) or isinstance(expected, bool):
-            raise CtlError(422, "invalid_args", "segment actions need args.lang, args.chunk and an integer expected_revision")
+            raise CtlError(
+                422, "invalid_args", "segment actions need args.lang, args.chunk and an integer expected_revision"
+            )
         assert req.lang is not None and req.chunk is not None
         view = self.head_view(job_id, req.lang, req.chunk, req.core["segment_id"])
         head = view.head
         if req.typ == "redo_line":
             undone = head.get("undo_of") is not None and (head.get("expression") or {}).get("provenance") == "undo_line"
-            source = next((r for r in view.store.all_revs(view.key) if r["revision"] == head.get("undo_of")), None) if undone else None
+            source = (
+                next((r for r in view.store.all_revs(view.key) if r["revision"] == head.get("undo_of")), None)
+                if undone
+                else None
+            )
             if source is None:
                 raise CtlError(409, "nothing_to_redo", "there is no undone edit to re-apply on this line")
         if head["revision"] != expected:
-            raise CtlError(409, "stale_revision", "segment changed since you loaded it", expected=expected, current=head["revision"])
+            raise CtlError(
+                409,
+                "stale_revision",
+                "segment changed since you loaded it",
+                expected=expected,
+                current=head["revision"],
+            )
         return view
 
     def _propose(self, job_id: str, req: ActionRequest, caps: dict[str, Any]) -> dict[str, Any]:
         """Issue a confirmation token and describe the proposal. Every action that commits, spends GPU or forks needs one."""
         token, expiry = self.confirm.issue(job_id, req.typ, req.bind_args, req.expected, caps["confirm_ttl_s"])
         proposal: dict[str, Any] = {
-            "type": req.typ, "args": req.bind_args, "expected_revision": req.expected, "expires_at": expiry,
+            "type": req.typ,
+            "args": req.bind_args,
+            "expected_revision": req.expected,
+            "expires_at": expiry,
             "summary": summarise(req.typ, req.bind_args),
         }
         if req.typ == "change_voice":
             proposal["fork"] = {
-                "from_job": job_id, "speaker_id": req.core["speaker_id"], "voice": req.core["voice"],
+                "from_job": job_id,
+                "speaker_id": req.core["speaker_id"],
+                "voice": req.core["voice"],
                 "note": "voice plans are immutable; confirming creates a NEW job with a copied, modified plan",
             }
         kind = "fork_proposal" if req.typ == "change_voice" else "needs_confirmation"
         return {"status": kind, "confirmation_token": token, "proposal": proposal}
 
     async def _admit_and_dispatch(
-        self, job_dir: Path, store: JobStore, job_id: str, req: ActionRequest, view: HeadView | None, token: str | None, caps: dict[str, Any]
+        self,
+        job_dir: Path,
+        store: JobStore,
+        job_id: str,
+        req: ActionRequest,
+        view: HeadView | None,
+        token: str | None,
+        caps: dict[str, Any],
     ) -> Response:
         """Budget, claim a synthesis slot, reserve the idempotency key and dispatch; undo all of it on any failure."""
         action_id = "act_" + uuid.uuid4().hex[:12]  # server-generated only: a caller-supplied action_id is ignored
@@ -199,7 +236,10 @@ class ActionService:
                 for key in claimed:
                     self.claims.release(store, key)
                 self.confirm.done(token, False)
-                return 200, {**(existing["response"] if existing else {"action_id": in_progress}), "status": "duplicate"}
+                return 200, {
+                    **(existing["response"] if existing else {"action_id": in_progress}),
+                    "status": "duplicate",
+                }
             if need:  # charge the attempt now: failed and retried attempts cost too
                 store.add_spend(synth_s=need)
                 if self.guard:
@@ -212,7 +252,9 @@ class ActionService:
             self.confirm.done(token, False)
             raise
 
-    def _claim(self, store: JobStore, job_id: str, req: ActionRequest, view: HeadView | None, need: float, caps: dict[str, Any]) -> str:
+    def _claim(
+        self, store: JobStore, job_id: str, req: ActionRequest, view: HeadView | None, need: float, caps: dict[str, Any]
+    ) -> str:
         """Check budgets and rate limits, then claim the synthesis slot; returns its key."""
         store.check_caps(caps["spend_cap_usd"], caps["synth_cap_s"], need)
         if self.guard:
@@ -224,11 +266,26 @@ class ActionService:
         return key
 
     # -------- dispatch
-    async def _dispatch(self, job_dir: Path, store: JobStore, job_id: str, action_id: str, req: ActionRequest, view: HeadView | None, token: str | None) -> Response:
+    async def _dispatch(
+        self,
+        job_dir: Path,
+        store: JobStore,
+        job_id: str,
+        action_id: str,
+        req: ActionRequest,
+        view: HeadView | None,
+        token: str | None,
+    ) -> Response:
         record: Record = {
-            "action_id": action_id, "job_id": job_id, "idempotency_key": req.idem, "payload_hash": req.payload_hash, "type": req.typ,
-            "args": {**req.core, "lang": req.lang, "chunk": req.chunk}, "expected_revision": req.expected,
-            "preview_only": req.preview_only, "ts": utcnow(),
+            "action_id": action_id,
+            "job_id": job_id,
+            "idempotency_key": req.idem,
+            "payload_hash": req.payload_hash,
+            "type": req.typ,
+            "args": {**req.core, "lang": req.lang, "chunk": req.chunk},
+            "expected_revision": req.expected,
+            "preview_only": req.preview_only,
+            "ts": utcnow(),
         }
         if req.typ == "report_issue":
             return self._record_issue(store, record, req)
@@ -236,34 +293,64 @@ class ActionService:
             return await self._start_add_language(store, job_id, record, req, token)
         if req.typ == "regenerate_chunk":
             self.claims.release(store, f"chunk/{req.chunk}")
-            raise CtlError(501, "not_implemented", "Regenerating a whole chunk is not available yet. You can edit or re-express individual lines instead.")
+            raise CtlError(
+                501,
+                "not_implemented",
+                "Regenerating a whole chunk is not available yet. You can edit or re-express individual lines instead.",
+            )
         if req.typ == "change_voice":
-            raise CtlError(501, "not_implemented", "Voice changes create a new job; confirming is not wired to job creation yet.")
+            raise CtlError(
+                501, "not_implemented", "Voice changes create a new job; confirming is not wired to job creation yet."
+            )
         assert view is not None
         return self._start_segment_op(job_dir, store, job_id, record, req, view, token)
 
     @staticmethod
     def _record_issue(store: JobStore, record: Record, req: ActionRequest) -> Response:
         with open(store.dir / "issues.jsonl", "a", encoding="utf-8") as handle:
-            handle.write(canon({"ts": utcnow(), "action_id": record["action_id"], "details": req.core["details"]}) + "\n")
+            handle.write(
+                canon({"ts": utcnow(), "action_id": record["action_id"], "details": req.core["details"]}) + "\n"
+            )
         response = {"status": "accepted", "action_id": record["action_id"], "operation": None, "revision": None}
         record["response"] = response
         store.add_action(record)
         return 200, response
 
-    def _start_segment_op(self, job_dir: Path, store: JobStore, job_id: str, record: Record, req: ActionRequest, view: HeadView, token: str | None) -> Response:
+    def _start_segment_op(
+        self,
+        job_dir: Path,
+        store: JobStore,
+        job_id: str,
+        record: Record,
+        req: ActionRequest,
+        view: HeadView,
+        token: str | None,
+    ) -> Response:
         assert req.lang is not None and req.chunk is not None
         op = new_operation(record["action_id"], "queued")
         store.running[view.key] = op["operation_id"]
         store.put_op(op)
         seg_id = req.core["segment_id"]
         store.emit(
-            "op.queued", job_id=job_id, operation_id=op["operation_id"], action_id=record["action_id"], action_type=req.typ,
-            lang=req.lang, chunk=req.chunk, segment_id=seg_id, head_revision=view.head["revision"],
+            "op.queued",
+            job_id=job_id,
+            operation_id=op["operation_id"],
+            action_id=record["action_id"],
+            action_type=req.typ,
+            lang=req.lang,
+            chunk=req.chunk,
+            segment_id=seg_id,
+            head_revision=view.head["revision"],
         )
         response = {
-            "status": "accepted", "action_id": record["action_id"], "operation": op, "revision": None,
-            "head_revision": view.head["revision"], "lang": req.lang, "chunk": req.chunk, "segment_id": seg_id,
+            "status": "accepted",
+            "action_id": record["action_id"],
+            "operation": op,
+            "revision": None,
+            "head_revision": view.head["revision"],
+            "lang": req.lang,
+            "chunk": req.chunk,
+            "segment_id": seg_id,
         }
         record["response"] = response
         store.add_action(record)
@@ -271,7 +358,9 @@ class ActionService:
         self._spawn(self._runner.run(job))
         return 202, response
 
-    async def _start_add_language(self, store: JobStore, job_id: str, record: Record, req: ActionRequest, token: str | None) -> Response:
+    async def _start_add_language(
+        self, store: JobStore, job_id: str, record: Record, req: ActionRequest, token: str | None
+    ) -> Response:
         action_id, lang = record["action_id"], req.core["lang"]
         generation = int(req.core.get("playback_generation", 0))
         op = new_operation(action_id, "running")
@@ -289,14 +378,28 @@ class ActionService:
             self.claims.release(store, lkey)
             op.update(state="done", stage="complete")
             store.put_op(op)
-            response = {"status": "obsolete", "action_id": action_id, "operation": op, "revision": None, "track": None, "generation": generation}
+            response = {
+                "status": "obsolete",
+                "action_id": action_id,
+                "operation": op,
+                "revision": None,
+                "track": None,
+                "generation": generation,
+            }
             record["response"] = response
             store.add_action(record)
             return 200, response
         limit = float(os.environ.get("DUB_CTL_LANG_MAX", "900"))
         op.update(state="running", stage="preparing", kind="add_language", lang=lang, deadline=time.time() + limit)
         store.put_op(op)  # the slot stays CLAIMED until ready / failed / deadline
-        response = {"status": "accepted", "action_id": action_id, "operation": op, "revision": None, "track": result.get("track"), "generation": generation}
+        response = {
+            "status": "accepted",
+            "action_id": action_id,
+            "operation": op,
+            "revision": None,
+            "track": result.get("track"),
+            "generation": generation,
+        }
         record["response"] = response
         store.add_action(record)
         self._spawn(self._track_watcher(store, job_id).watch(op, lang, lkey, token))

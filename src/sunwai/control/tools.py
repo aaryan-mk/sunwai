@@ -27,17 +27,23 @@ class ToolSpec(NamedTuple):
 
 
 TOOLS: dict[str, ToolSpec] = {
-    "inspect": ToolSpec("Read the job state (segments, languages, metrics). No side effects.", {"lang": {"type": "string"}}, []),
+    "inspect": ToolSpec(
+        "Read the job state (segments, languages, metrics). No side effects.", {"lang": {"type": "string"}}, []
+    ),
     "edit_line": ToolSpec(
         "Replace the dubbed text of one line and re-synthesise it. Reversible.",
         {"segment_id": _STR, "text": {"type": "string"}},
         ["segment_id", "text"],
     ),
     "undo_line": ToolSpec(
-        "Undo the last edit of one line (creates a new revision restoring the previous text).", {"segment_id": _STR}, ["segment_id"]
+        "Undo the last edit of one line (creates a new revision restoring the previous text).",
+        {"segment_id": _STR},
+        ["segment_id"],
     ),
     "redo_line": ToolSpec(
-        "Re-apply the edit that the last undo_line removed (only right after an undo).", {"segment_id": _STR}, ["segment_id"]
+        "Re-apply the edit that the last undo_line removed (only right after an undo).",
+        {"segment_id": _STR},
+        ["segment_id"],
     ),
     "change_expression": ToolSpec(
         "Preview a different delivery for one line.",
@@ -68,7 +74,14 @@ TOOLS: dict[str, ToolSpec] = {
     "report_issue": ToolSpec("Record a problem report for the team.", {"details": {"type": "string"}}, ["details"]),
 }
 CLIENT_TOOLS = {"inspect", "switch_language", "subtitles", "explain"}
-AUTO_TOOLS = {"edit_line", "undo_line", "redo_line", "change_expression", "retime", "report_issue"}  # reversible / preview: no token
+AUTO_TOOLS = {
+    "edit_line",
+    "undo_line",
+    "redo_line",
+    "change_expression",
+    "retime",
+    "report_issue",
+}  # reversible / preview: no token
 CONFIRM_TOOLS = {"regenerate_chunk", "change_voice"}  # long / fork: token required
 
 

@@ -44,7 +44,21 @@ def wav_duration(path: str | Path) -> float:
 def ffmpeg_tempo(src: Path, dst: Path, tempo: float) -> None:
     """Time-stretch ``src`` into ``dst`` (mono, 24 kHz) with ffmpeg ``atempo``; the call is time-bounded."""
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-filter:a", f"atempo={tempo:.6f}", "-ac", "1", "-ar", "24000", str(dst)],
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(src),
+            "-filter:a",
+            f"atempo={tempo:.6f}",
+            "-ac",
+            "1",
+            "-ar",
+            "24000",
+            str(dst),
+        ],
         check=True,
         timeout=float(os.environ.get("EXPR_FFMPEG_TIMEOUT", "120")),
     )
@@ -55,7 +69,12 @@ def pad_to(path: str | Path, duration_s: float) -> None:
     samples, rate = sf.read(str(path), dtype="float32")
     wanted = int(round(duration_s * rate))
     if len(samples) < wanted:
-        sf.write(str(path), np.concatenate([samples, np.zeros(wanted - len(samples), dtype="float32")]), rate, subtype="PCM_16")
+        sf.write(
+            str(path),
+            np.concatenate([samples, np.zeros(wanted - len(samples), dtype="float32")]),
+            rate,
+            subtype="PCM_16",
+        )
 
 
 def synth_fit(

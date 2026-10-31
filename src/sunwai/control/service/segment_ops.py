@@ -14,11 +14,11 @@ from sunwai.control.codec import Record, utcnow
 from sunwai.control.deps import ControlDeps
 from sunwai.control.errors import CtlError
 from sunwai.control.hooks import NotImplementedHook
+from sunwai.control.service.claims import SynthClaims
 from sunwai.control.service.confirmer import Confirmer
 from sunwai.control.service.head import spoken_text
 from sunwai.control.service.opstate import OperationRecorder
 from sunwai.control.service.request import ActionRequest
-from sunwai.control.service.claims import SynthClaims
 from sunwai.control.service.watchers import watch_lipsync
 from sunwai.control.service.worker import CancelState, lock_chunk, run_expression_mutation
 from sunwai.control.store import JobStore
@@ -74,12 +74,20 @@ def candidate_revision(head: Record, out: Record, intent: str | None, tempo: flo
 
     A candidate never inherits undo/redo bookkeeping from the head it was derived from.
     """
-    rev = {k: v for k, v in head.items() if k not in ("m2_applied", "undo_of", "redo_of", "m2_revision", "chunk_audio_hash")}
+    rev = {
+        k: v
+        for k, v in head.items()
+        if k not in ("m2_applied", "undo_of", "redo_of", "m2_revision", "chunk_audio_hash")
+    }
     rev.update({k: v for k, v in out.items() if k.startswith("m2_")})
     rev.update(
-        parent_revision=head["revision"], status="candidate", ts=utcnow(),
-        spoken_text=out.get("spoken_text", head["spoken_text"]), style=out.get("style"),
-        tempo_factor=out.get("tempo_factor", tempo or 1.0), audio_hash=out["audio_hash"],
+        parent_revision=head["revision"],
+        status="candidate",
+        ts=utcnow(),
+        spoken_text=out.get("spoken_text", head["spoken_text"]),
+        style=out.get("style"),
+        tempo_factor=out.get("tempo_factor", tempo or 1.0),
+        audio_hash=out["audio_hash"],
         expression={"intent": intent, "emotion": None, "confidence": None, "provenance": "user_request"},
     )
     return rev
@@ -106,10 +114,18 @@ class SegmentRunner:
         recorder = OperationRecorder(job.store, job.job_id)
         started = time.time()
         ok = False
-        stack = contextlib.AsyncExitStack()  # holds the shared chunk lock across the expression call AND our revision recording
+        stack = (
+            contextlib.AsyncExitStack()
+        )  # holds the shared chunk lock across the expression call AND our revision recording
         try:
             recorder.stage(job.op, "synthesizing")
-            job.store.emit("op.stage", job_id=job.job_id, operation_id=job.op["operation_id"], action_id=job.op["action_id"], stage="synthesizing")
+            job.store.emit(
+                "op.stage",
+                job_id=job.job_id,
+                operation_id=job.op["operation_id"],
+                action_id=job.op["action_id"],
+                stage="synthesizing",
+            )
             ok = await self._dispatch(job, recorder, started, stack, cancel)
         except NotImplementedHook as exc:
             recorder.fail(job.op, f"not_implemented: {exc}")
@@ -128,7 +144,14 @@ class SegmentRunner:
                 self.claims.release(job.store, job.key)
                 self.confirm.done(job.token, ok)
 
-    async def _dispatch(self, job: SegmentJob, recorder: OperationRecorder, started: float, stack: contextlib.AsyncExitStack, cancel: CancelState) -> bool:
+    async def _dispatch(
+        self,
+        job: SegmentJob,
+        recorder: OperationRecorder,
+        started: float,
+        stack: contextlib.AsyncExitStack,
+        cancel: CancelState,
+    ) -> bool:
         req = job.request
         if req.typ in EDIT_TYPES:
             return await self._edit_flow(job, recorder, started, stack, cancel)
@@ -137,11 +160,24 @@ class SegmentRunner:
         return await self._preview_flow(job, recorder, started)
 
     # ---- edit / undo / redo
-    async def _edit_flow(self, job: SegmentJob, recorder: OperationRecorder, started: float, stack: contextlib.AsyncExitStack, cancel: CancelState) -> bool:
+    async def _edit_flow(
+        self,
+        job: SegmentJob,
+        recorder: OperationRecorder,
+        started: float,
+        stack: contextlib.AsyncExitStack,
+        cancel: CancelState,
+    ) -> bool:
         typ, head, store, key = job.request.typ, job.head, job.store, job.key
-        source = next(r for r in store.all_revs(key) if r["revision"] == head["undo_of"]) if typ == "redo_line" else None
+        source = (
+            next(r for r in store.all_revs(key) if r["revision"] == head["undo_of"]) if typ == "redo_line" else None
+        )
         keep: Record = {}
-        if typ in ("undo_line", "redo_line") and head.get("m2_applied") and (typ == "undo_line" or head.get("undo_of") is not None):
+        if (
+            typ in ("undo_line", "redo_line")
+            and head.get("m2_applied")
+            and (typ == "undo_line" or head.get("undo_of") is not None)
+        ):
             res, keep, extra = await self._expression_undo(job, recorder, stack, cancel)
         else:
             res, extra = await self._host_edit(job, source)
@@ -155,11 +191,17 @@ class SegmentRunner:
         self._finish(job, recorder, rv, started, undo=(typ == "undo_line"))
         return True
 
-    async def _expression_undo(self, job: SegmentJob, recorder: OperationRecorder, stack: contextlib.AsyncExitStack, cancel: CancelState) -> tuple[Record, Record, Record]:
+    async def _expression_undo(
+        self, job: SegmentJob, recorder: OperationRecorder, stack: contextlib.AsyncExitStack, cancel: CancelState
+    ) -> tuple[Record, Record, Record]:
         """Undo (or redo) through the expression history: undo of an undo is its redo."""
         head, typ = job.head, job.request.typ
-        await lock_chunk(stack, getattr(self.d, "chunk_lock", None), job.job_id, job.lang, job.chunk)  # a legacy edit can never land between the commit and our record
-        out = await run_expression_mutation("expression_undo_start", recorder, job.op, cancel, job.job_dir, job.lang, job.chunk, job.seg_id)
+        await lock_chunk(
+            stack, getattr(self.d, "chunk_lock", None), job.job_id, job.lang, job.chunk
+        )  # a legacy edit can never land between the commit and our record
+        out = await run_expression_mutation(
+            "expression_undo_start", recorder, job.op, cancel, job.job_dir, job.lang, job.chunk, job.seg_id
+        )
         if not out.get("ok"):
             raise RuntimeError(out.get("error") or "undo failed")
         segs_now, _start = self.d.segments(job.job_dir, job.lang, job.chunk)
@@ -182,7 +224,12 @@ class SegmentRunner:
 
     @staticmethod
     def _expression_keep(head: Record, out: Record) -> Record:
-        return {"m2_applied": True, "m2_revision": out.get("m2_revision"), "chunk_audio_hash": out.get("chunk_audio_hash"), "m2_candidate_id": head.get("m2_candidate_id")}
+        return {
+            "m2_applied": True,
+            "m2_revision": out.get("m2_revision"),
+            "chunk_audio_hash": out.get("chunk_audio_hash"),
+            "m2_candidate_id": head.get("m2_candidate_id"),
+        }
 
     def _edited_revision(self, job: SegmentJob, res: Record, keep: Record, extra: Record) -> Record:
         """Build the active revision that records an edit, undo or redo."""
@@ -191,13 +238,28 @@ class SegmentRunner:
         text = seg_after.get("tgt_text", job.request.core.get("text", head["display_text"]))
         rev = {k: v for k, v in head.items() if k not in EXPRESSION_KEYS}
         reuse = next(
-            (r for r in reversed(job.store.all_revs(job.key)) if r["display_text"] == text and r["revision"] != head["revision"] and r["status"] in ("active", "superseded")),
+            (
+                r
+                for r in reversed(job.store.all_revs(job.key))
+                if r["display_text"] == text
+                and r["revision"] != head["revision"]
+                and r["status"] in ("active", "superseded")
+            ),
             None,
         )
-        audio_hash = reuse["audio_hash"] if (typ == "undo_line" and reuse) else self.d.audio_hash(job.job_dir, job.lang, job.chunk, text)
+        audio_hash = (
+            reuse["audio_hash"]
+            if (typ == "undo_line" and reuse)
+            else self.d.audio_hash(job.job_dir, job.lang, job.chunk, text)
+        )
         rev.update(
-            parent_revision=head["revision"], display_text=text, spoken_text=(spoken_text(seg_after) if keep and seg_after else text),
-            status="active", ts=utcnow(), live_hist=history_length_or_none(seg_after), audio_hash=audio_hash,
+            parent_revision=head["revision"],
+            display_text=text,
+            spoken_text=(spoken_text(seg_after) if keep and seg_after else text),
+            status="active",
+            ts=utcnow(),
+            live_hist=history_length_or_none(seg_after),
+            audio_hash=audio_hash,
             expression={"intent": None, "emotion": None, "confidence": None, "provenance": typ},
             subtitle_revision=head.get("subtitle_revision", 0) + 1,
         )
@@ -207,24 +269,48 @@ class SegmentRunner:
         return rev
 
     # ---- apply a previewed candidate
-    async def _apply_flow(self, job: SegmentJob, recorder: OperationRecorder, started: float, stack: contextlib.AsyncExitStack, cancel: CancelState) -> bool:
+    async def _apply_flow(
+        self,
+        job: SegmentJob,
+        recorder: OperationRecorder,
+        started: float,
+        stack: contextlib.AsyncExitStack,
+        cancel: CancelState,
+    ) -> bool:
         head, store, key, exp = job.head, job.store, job.key, job.request.expected
-        candidate = next((r for r in store.all_revs(key) if r["revision"] == job.request.apply_cand and r["status"] == "candidate"), None)
+        candidate = next(
+            (r for r in store.all_revs(key) if r["revision"] == job.request.apply_cand and r["status"] == "candidate"),
+            None,
+        )
         if candidate is None or candidate["parent_revision"] != exp:
-            raise CtlError(409, "stale_revision", "candidate is no longer based on the active revision", expected=exp, current=head["revision"])
+            raise CtlError(
+                409,
+                "stale_revision",
+                "candidate is no longer based on the active revision",
+                expected=exp,
+                current=head["revision"],
+            )
         await lock_chunk(stack, getattr(self.d, "chunk_lock", None), job.job_id, job.lang, job.chunk)
-        out = await run_expression_mutation("expression_apply_start", recorder, job.op, cancel, job.job_dir, job.lang, job.chunk, job.seg_id, candidate)
+        out = await run_expression_mutation(
+            "expression_apply_start", recorder, job.op, cancel, job.job_dir, job.lang, job.chunk, job.seg_id, candidate
+        )
         if not out.get("ok"):
             raise RuntimeError(out.get("error") or "apply failed")
         segs_now, _start = self.d.segments(job.job_dir, job.lang, job.chunk)
         seg_now = next((x for x in segs_now if str(x.get("id")) == job.seg_id), {})
         rev = {k: v for k, v in candidate.items() if k not in ("undo_of", "redo_of")}
         rev.update(
-            undo_of=None, parent_revision=head["revision"], status="active", audio_hash=out.get("audio_hash", candidate["audio_hash"]),
+            undo_of=None,
+            parent_revision=head["revision"],
+            status="active",
+            audio_hash=out.get("audio_hash", candidate["audio_hash"]),
             display_text=seg_now.get("tgt_text", candidate["display_text"]),
-            spoken_text=spoken_text(seg_now) if seg_now else candidate["spoken_text"], m2_applied=True,
-            m2_revision=out.get("m2_revision"), live_hist=history_length_or_none(seg_now),
-            chunk_audio_hash=out.get("chunk_audio_hash"), ts=utcnow(),
+            spoken_text=spoken_text(seg_now) if seg_now else candidate["spoken_text"],
+            m2_applied=True,
+            m2_revision=out.get("m2_revision"),
+            live_hist=history_length_or_none(seg_now),
+            chunk_audio_hash=out.get("chunk_audio_hash"),
+            ts=utcnow(),
         )
         try:
             rv = store.add_revision(key, rev, expect_head=exp, check=True)
@@ -240,14 +326,31 @@ class SegmentRunner:
     async def _preview_flow(self, job: SegmentJob, recorder: OperationRecorder, started: float) -> bool:
         core = job.request.core
         intent, tempo = core.get("intent"), core.get("tempo_factor")
-        out = await ctl_hooks.expression_resynth(job.job_dir, job.lang, job.chunk, job.seg_id, intent, job.head["display_text"], tempo, job.store.dir / "candidates")
+        out = await ctl_hooks.expression_resynth(
+            job.job_dir,
+            job.lang,
+            job.chunk,
+            job.seg_id,
+            intent,
+            job.head["display_text"],
+            tempo,
+            job.store.dir / "candidates",
+        )
         if not out.get("ok"):
             raise RuntimeError(out.get("error") or "resynth failed")
         rv = job.store.add_revision(job.key, candidate_revision(job.head, out, intent, tempo))
         self._finish(job, recorder, rv, started, candidate=True)
         return True
 
-    def _finish(self, job: SegmentJob, recorder: OperationRecorder, rv: Record, started: float, candidate: bool = False, undo: bool = False) -> None:
+    def _finish(
+        self,
+        job: SegmentJob,
+        recorder: OperationRecorder,
+        rv: Record,
+        started: float,
+        candidate: bool = False,
+        undo: bool = False,
+    ) -> None:
         """Announce that audio is ready; committed revisions then hand over to the lip-sync watcher."""
         recorder.audio_ready(job.op, rv, candidate)
         if candidate:

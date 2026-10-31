@@ -79,7 +79,9 @@ class JobStore:
                 self.resumable.append(dict(op))
                 continue
             failed = dict(op)
-            error = "language deadline passed while the server was down" if is_addlang else "interrupted by server restart"
+            error = (
+                "language deadline passed while the server was down" if is_addlang else "interrupted by server restart"
+            )
             failed.update(state="failed", stage="error", error=error)
             self.put_op(failed)
             self.emit("op.error", operation_id=failed["operation_id"], action_id=failed.get("action_id"), error=error)
@@ -127,7 +129,9 @@ class JobStore:
             head = self.head(key)
             current = head["revision"] if head else None
             if check and current != expect_head:
-                raise CtlError(409, "stale_revision", "segment changed since you loaded it", expected=expect_head, current=current)
+                raise CtlError(
+                    409, "stale_revision", "segment changed since you loaded it", expected=expect_head, current=current
+                )
             rev = dict(rev)
             rev["revision"] = self.next_no(key)
             self._files["revisions"].append(rev)

@@ -8,8 +8,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from sunwai.control.expression.revisions import expr_dir
 from sunwai.control.expression.fsutil import unlink_quietly
+from sunwai.control.expression.revisions import expr_dir
 
 MixSnapshot = dict[str, Any]
 SCRATCH_PATTERNS = (".dubtmp_*", ".stemtmp_*")
@@ -30,7 +30,9 @@ def snapshot_mix(out_dir: str | Path) -> MixSnapshot:
     for name in mix_files(out_dir):
         source = Path(out_dir) / name
         if source.exists():
-            shutil.copy2(source, backup / name)  # copy2 keeps mtime: lip-sync freshness (lipsync newer than dub) must not flip
+            shutil.copy2(
+                source, backup / name
+            )  # copy2 keeps mtime: lip-sync freshness (lipsync newer than dub) must not flip
             files[name] = str(backup / name)
         else:
             files[name] = None

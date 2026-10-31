@@ -38,8 +38,15 @@ def call_planner(
     declarations = [d for d in ctl_tools.declarations() if d["name"] in available] if tools_on else []
     try:
         return llm_client.chat_tools(  # type: ignore[no-any-return]
-            system, user_parts, declarations, use_case="chat", temperature=0,
-            max_tokens=MAX_OUTPUT_TOKENS, timeout=45, retries=2, attempt_cb=attempt_cb,
+            system,
+            user_parts,
+            declarations,
+            use_case="chat",
+            temperature=0,
+            max_tokens=MAX_OUTPUT_TOKENS,
+            timeout=45,
+            retries=2,
+            attempt_cb=attempt_cb,
         )
     except llm_client.LLMError as exc:
         raise CtlError(503, "planner_unavailable", f"planner HTTP {exc.status}") from exc
@@ -58,6 +65,10 @@ def parse_response(response: dict[str, Any]) -> tuple[str, dict[str, Any] | None
     meta = response.get("usageMetadata") or {}
     tokens_in = int(meta.get("promptTokenCount", 0))
     tokens_out = int(meta.get("candidatesTokenCount", 0)) + int(meta.get("thoughtsTokenCount", 0))
-    usage = {"in": tokens_in, "out": tokens_out, "usd": round(tokens_in * PRICE_IN / 1e6 + tokens_out * PRICE_OUT / 1e6, 6)}
+    usage = {
+        "in": tokens_in,
+        "out": tokens_out,
+        "usd": round(tokens_in * PRICE_IN / 1e6 + tokens_out * PRICE_OUT / 1e6, 6),
+    }
     call = {"name": calls[0].get("name"), "args": dict(calls[0].get("args") or {})} if calls else None
     return text, call, len(calls), usage

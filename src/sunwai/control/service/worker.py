@@ -93,7 +93,9 @@ async def run_expression_mutation(
     except asyncio.TimeoutError:
         return await _wait_after_timeout(hook_name, recorder, op, cancel, future, timeout)
     except asyncio.CancelledError:
-        result, _was = await drain(future)  # wrapper / task / shutdown cancelled: the worker thread still owns live files
+        result, _was = await drain(
+            future
+        )  # wrapper / task / shutdown cancelled: the worker thread still owns live files
         cancel.deferred = True
         return result
     except BaseException as exc:  # the worker itself raised
@@ -104,7 +106,12 @@ async def run_expression_mutation(
 
 
 async def _wait_after_timeout(
-    hook_name: str, recorder: OperationRecorder, op: dict[str, Any], cancel: CancelState, future: concurrent.futures.Future[Result], timeout: float
+    hook_name: str,
+    recorder: OperationRecorder,
+    op: dict[str, Any],
+    cancel: CancelState,
+    future: concurrent.futures.Future[Result],
+    timeout: float,
 ) -> Result:
     job_id = recorder.job_id
     message = f"[ctl][STUCK] {hook_name} on job {job_id} exceeded {timeout:.0f}s; keeping the chunk lock until the worker ends"
@@ -112,7 +119,9 @@ async def _wait_after_timeout(
     logging.getLogger("ctl").error(message)
     try:
         recorder.stage(op, "stuck")
-        recorder.store.emit("op.stuck", job_id=job_id, operation_id=op["operation_id"], action_id=op["action_id"], after_s=timeout)
+        recorder.store.emit(
+            "op.stuck", job_id=job_id, operation_id=op["operation_id"], action_id=op["action_id"], after_s=timeout
+        )
     except Exception:
         pass
     result, was_cancelled = await drain(future)

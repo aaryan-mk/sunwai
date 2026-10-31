@@ -7,7 +7,6 @@ import uuid
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
-from sunwai.control import hooks as ctl_hooks
 from sunwai.control import tools as ctl_tools
 from sunwai.control.chat.explain import explain_action
 from sunwai.control.chat.planner import MODEL, call_planner, estimate_cost_usd, parse_response
@@ -49,7 +48,14 @@ def error_events(exc: CtlError, tool: str) -> list[Event]:
     if exc.code in ("busy", "one_synthesis_per_job", "one_synthesis_global"):
         return [("text", {"delta": "Another change is still being processed. Please try again in a moment."})]
     if exc.code == "schedule_failed":
-        return [("text", {"delta": "I could not schedule that language just now (nothing was changed). Please try again shortly."})]
+        return [
+            (
+                "text",
+                {
+                    "delta": "I could not schedule that language just now (nothing was changed). Please try again shortly."
+                },
+            )
+        ]
     return [("error", {"code": exc.code, "detail": exc.detail})]
 
 
@@ -60,7 +66,9 @@ def unavailable_text(tool: str) -> str:
     return f"Sorry, {tool.replace('_', ' ')} is not available yet. I can edit or re-express individual lines, switch language or subtitles."
 
 
-def submission_args(name: str, args: dict[str, Any], context: dict[str, Any], lang: str | None, segment: tuple[int, str] | None) -> dict[str, Any]:
+def submission_args(
+    name: str, args: dict[str, Any], context: dict[str, Any], lang: str | None, segment: tuple[int, str] | None
+) -> dict[str, Any]:
     """Build the ``args`` of the action submitted for tool ``name``."""
     if segment is not None:
         return {**args, "lang": lang, "chunk": segment[0], "segment_id": segment[1]}
@@ -105,7 +113,9 @@ class ChatRouter:
 
         return attempt
 
-    async def plan(self, job_id: str, message: str, history: Any, context: dict[str, Any], tools_on: bool = True) -> dict[str, Any]:
+    async def plan(
+        self, job_id: str, message: str, history: Any, context: dict[str, Any], tools_on: bool = True
+    ) -> dict[str, Any]:
         """Ask the planner what to do. Client-supplied ``history`` is ignored entirely (it would be attacker-controlled)."""
         job_dir = self.d.job_dir(job_id)
         langs = self.d.job_langs(job_dir)
@@ -116,11 +126,15 @@ class ChatRouter:
         offered, unavailable = self.available()
         system = build_system_prompt(unavailable, "add_language" in offered)
         parts = build_user_parts(message, context, snap)
-        response = await asyncio.to_thread(call_planner, system, parts, tools_on, offered, self._attempt_callback(store, caps))
+        response = await asyncio.to_thread(
+            call_planner, system, parts, tools_on, offered, self._attempt_callback(store, caps)
+        )
         text, call, ncalls, usage = parse_response(response)
         return {"text": text, "call": call, "ncalls": ncalls, "usage": usage, "snap": snap, "available": offered}
 
-    async def turn(self, job_id: str, message: str, history: Any, context: dict[str, Any], tools_on: bool = True) -> AsyncIterator[Event]:
+    async def turn(
+        self, job_id: str, message: str, history: Any, context: dict[str, Any], tools_on: bool = True
+    ) -> AsyncIterator[Event]:
         """Run one chat turn as an async generator of ``(event, data)`` for the ``/chat`` SSE."""
         turn_id = "turn_" + uuid.uuid4().hex[:10]
         try:
@@ -152,7 +166,9 @@ class ChatRouter:
             ops = list(store.ops.values())
         return explain_action(actions, ops, action_id)
 
-    def _prescreen(self, name: str, raw: dict[str, Any], message: str, available: set[str]) -> tuple[dict[str, Any] | None, list[Event]]:
+    def _prescreen(
+        self, name: str, raw: dict[str, Any], message: str, available: set[str]
+    ) -> tuple[dict[str, Any] | None, list[Event]]:
         """Validate the call before anything runs.
 
         Returns:
@@ -174,7 +190,9 @@ class ChatRouter:
 
     def _answer_locally(self, job_id: str, name: str, args: dict[str, Any], snap: dict[str, Any]) -> list[Event] | None:
         """Answer tools that need no server action (client actions, explain); ``None`` means "submit an action"."""
-        if name == "add_language" and args["lang"] in snap["langs"]:  # already dubbed: the user means "switch to it", never a costly add
+        if (
+            name == "add_language" and args["lang"] in snap["langs"]
+        ):  # already dubbed: the user means "switch to it", never a costly add
             return [("client_action", {"tool": "switch_language", "args": {"lang": args["lang"]}})]
         if name == "explain":
             return text_events(self.explain_text(job_id, args.get("action_id")))
@@ -211,25 +229,48 @@ class ChatRouter:
                 (
                     "proposal",
                     {
-                        "turn_id": turn_id, "tool": name, "args": proposal["args"], "summary": proposal["summary"],
-                        "requires_confirmation": True, "expected_revision": proposal.get("expected_revision"),
-                        "confirmation_token": response["confirmation_token"], "kind": response["status"],
+                        "turn_id": turn_id,
+                        "tool": name,
+                        "args": proposal["args"],
+                        "summary": proposal["summary"],
+                        "requires_confirmation": True,
+                        "expected_revision": proposal.get("expected_revision"),
+                        "confirmation_token": response["confirmation_token"],
+                        "kind": response["status"],
                     },
                 )
             ]
         events: list[Event] = [
             (
                 "action_result",
-                {"action_id": response.get("action_id"), "status": response.get("status"), "operation_id": (response.get("operation") or {}).get("operation_id")},
+                {
+                    "action_id": response.get("action_id"),
+                    "status": response.get("status"),
+                    "operation_id": (response.get("operation") or {}).get("operation_id"),
+                },
             )
         ]
         if name == "retime":  # never silent: state the tempo actually previewed and the supported range
             tempo = format_tempo(args["tempo_factor"])
-            events.append(("text", {"delta": f" (Previewing tempo x{tempo} on that line; the supported range is 0.92 to 1.08, at most about 8 percent.)"}))
+            events.append(
+                (
+                    "text",
+                    {
+                        "delta": f" (Previewing tempo x{tempo} on that line; the supported range is 0.92 to 1.08, at most about 8 percent.)"
+                    },
+                )
+            )
         return events
 
     async def route(
-        self, job_id: str, turn_id: str, call: dict[str, Any], context: dict[str, Any], snap: dict[str, Any], available: set[str], message: str = ""
+        self,
+        job_id: str,
+        turn_id: str,
+        call: dict[str, Any],
+        context: dict[str, Any],
+        snap: dict[str, Any],
+        available: set[str],
+        message: str = "",
     ) -> AsyncIterator[Event]:
         """Validate and execute the planner's single tool call, yielding stream events."""
         name, raw = call["name"], call["args"]

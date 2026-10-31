@@ -51,8 +51,17 @@ class Confirmer:
             CtlError: 403 ``bad_confirmation`` when the token is missing, expired, in use, or bound to a different proposal.
         """
         entry = self.live.get(token or "")
-        if not entry or entry[1] < time.time() or entry[2] or not hmac.compare_digest(entry[0], self.bind(job_id, typ, args, expected)):
-            raise CtlError(403, "bad_confirmation", "confirmation token missing, expired, in use, or not bound to this exact proposal")
+        if (
+            not entry
+            or entry[1] < time.time()
+            or entry[2]
+            or not hmac.compare_digest(entry[0], self.bind(job_id, typ, args, expected))
+        ):
+            raise CtlError(
+                403,
+                "bad_confirmation",
+                "confirmation token missing, expired, in use, or not bound to this exact proposal",
+            )
         entry[2] = True
 
     def done(self, token: str | None, ok: bool) -> None:

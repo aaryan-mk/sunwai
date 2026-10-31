@@ -131,21 +131,45 @@ def append_revision(out_dir: str | Path, seg_id: str | int, rec: Revision) -> No
 
 
 def make_record(
-    out_dir: str | Path, seg: Segment, lang: str, revision: int, parent: int | None, source: str, extra: dict[str, Any] | None = None
+    out_dir: str | Path,
+    seg: Segment,
+    lang: str,
+    revision: int,
+    parent: int | None,
+    source: str,
+    extra: dict[str, Any] | None = None,
 ) -> Revision:
     """Build a revision record describing ``seg`` as it is now."""
     wav = active_wav(out_dir, seg["id"])
     rec: Revision = {
-        "job_id": None, "lang": lang, "chunk_id": Path(out_dir).name, "segment_id": seg["id"], "revision": revision,
-        "parent_revision": parent, "source_revision": None, "speaker_id": seg.get("speaker"), "voice_plan_id": None,
-        "slot_start_ms": int(seg["start"] * 1000), "slot_end_ms": int(seg["end"] * 1000),
-        "raw_source_text": seg.get("src_text"), "display_text": seg.get("tgt_text"), "spoken_text": spoken_text_of(seg),
-        "tts_text": seg.get("tts_text"), "tts_src": seg.get("tts_src"), "tts_by": seg.get("tts_by"),
+        "job_id": None,
+        "lang": lang,
+        "chunk_id": Path(out_dir).name,
+        "segment_id": seg["id"],
+        "revision": revision,
+        "parent_revision": parent,
+        "source_revision": None,
+        "speaker_id": seg.get("speaker"),
+        "voice_plan_id": None,
+        "slot_start_ms": int(seg["start"] * 1000),
+        "slot_end_ms": int(seg["end"] * 1000),
+        "raw_source_text": seg.get("src_text"),
+        "display_text": seg.get("tgt_text"),
+        "spoken_text": spoken_text_of(seg),
+        "tts_text": seg.get("tts_text"),
+        "tts_src": seg.get("tts_src"),
+        "tts_by": seg.get("tts_by"),
         "expression": seg.get("expression") or dict(NO_EXPRESSION),
-        "style": seg.get("style"), "style_src": seg.get("style_src"), "tempo_factor": seg.get("tempo"),
+        "style": seg.get("style"),
+        "style_src": seg.get("style_src"),
+        "tempo_factor": seg.get("tempo"),
         "audio_hash": sha256_file(wav) if wav.exists() else None,
-        "subtitle_revision": revision, "status": "active", "state_fp": state_fingerprint(out_dir, seg), "origin": source,
-        "chunk_audio_hash": None, "ts": time.time(),
+        "subtitle_revision": revision,
+        "status": "active",
+        "state_fp": state_fingerprint(out_dir, seg),
+        "origin": source,
+        "chunk_audio_hash": None,
+        "ts": time.time(),
     }
     if extra:
         rec.update(extra)
@@ -178,7 +202,9 @@ def head_revision(out_dir: str | Path, lang: str, seg_id: str | int) -> Revision
         return revs[-1]
 
 
-def _append_head(out_dir: str | Path, seg: Segment, lang: str, seg_id: str | int, number: int, parent: int | None, origin: str) -> Revision:
+def _append_head(
+    out_dir: str | Path, seg: Segment, lang: str, seg_id: str | int, number: int, parent: int | None, origin: str
+) -> Revision:
     rec = make_record(out_dir, seg, lang, number, parent, origin)
     append_revision(out_dir, seg_id, rec)
     snapshot_audio(out_dir, seg_id, number)
@@ -192,8 +218,16 @@ def update_operation(out_dir: str | Path, op_id: str, **fields: Any) -> dict[str
     path = directory / f"{op_id}.json"
     current = read_json(
         path,
-        {"operation_id": op_id, "action_id": None, "state": "queued", "stage": "queued", "revision": None,
-         "audio_ready": False, "lipsync_ready": False, "error": None},
+        {
+            "operation_id": op_id,
+            "action_id": None,
+            "state": "queued",
+            "stage": "queued",
+            "revision": None,
+            "audio_ready": False,
+            "lipsync_ready": False,
+            "error": None,
+        },
     )
     current.update(fields)
     write_json_atomic(path, current)

@@ -170,7 +170,12 @@ class Guard:
         """
         with self.lock:
             if self.synth_running >= int(env_float("DUB_CTL_GLOBAL_SYNTH", 1)):
-                raise CtlError(429, "one_synthesis_global", "another synthesis is running; try again when it finishes", retry_after=5)
+                raise CtlError(
+                    429,
+                    "one_synthesis_global",
+                    "another synthesis is running; try again when it finishes",
+                    retry_after=5,
+                )
             self.synth_running += 1
 
     def synth_release(self) -> None:

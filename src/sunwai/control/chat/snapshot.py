@@ -34,10 +34,19 @@ def select_rows(rows: list[dict[str, Any]], context: dict[str, Any]) -> list[dic
     if isinstance(playhead, (int, float)):
         rows.sort(key=lambda r: abs((r["start"] + r["end"]) * 500 - playhead))
     has_current = context.get("chunk") is not None and context.get("segment_id") is not None
-    current = next((r for r in rows if has_current and r["chunk"] == context["chunk"] and str(r["id"]) == str(context["segment_id"])), None)
+    current = next(
+        (
+            r
+            for r in rows
+            if has_current and r["chunk"] == context["chunk"] and str(r["id"]) == str(context["segment_id"])
+        ),
+        None,
+    )
     keep = rows[:MAX_SNAP]
     if current is not None and current not in keep:
-        keep = keep[:-1] + [current]  # the highlighted line is ALWAYS visible to the planner and resolvable, whatever the playhead
+        keep = keep[:-1] + [
+            current
+        ]  # the highlighted line is ALWAYS visible to the planner and resolvable, whatever the playhead
     return keep
 
 
@@ -46,19 +55,30 @@ def last_line_action(store: JobStore) -> dict[str, Any] | None:
     try:
         with store.lock:
             actions = sorted(
-                (a for a in store.actions.values() if (a.get("args") or {}).get("segment_id") is not None and a.get("type") in LINE_ACTIONS),
+                (
+                    a
+                    for a in store.actions.values()
+                    if (a.get("args") or {}).get("segment_id") is not None and a.get("type") in LINE_ACTIONS
+                ),
                 key=lambda a: a.get("ts", ""),
             )
         if not actions:
             return None
         action = actions[-1]
         args = action["args"]
-        return {"type": action["type"], "ref": f"c{args.get('chunk')}s{args.get('segment_id')}", "lang": args.get("lang"), "at": action.get("ts")}
+        return {
+            "type": action["type"],
+            "ref": f"c{args.get('chunk')}s{args.get('segment_id')}",
+            "lang": args.get("lang"),
+            "at": action.get("ts"),
+        }
     except Exception:
         return None
 
 
-def build_snapshot(rows_of: Callable[[str], list[dict[str, Any]]], store: JobStore, context: dict[str, Any], langs: list[str]) -> dict[str, Any]:
+def build_snapshot(
+    rows_of: Callable[[str], list[dict[str, Any]]], store: JobStore, context: dict[str, Any], langs: list[str]
+) -> dict[str, Any]:
     """Build the snapshot handed to the planner.
 
     Args:
