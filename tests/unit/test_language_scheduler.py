@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from sunwai.jobs import language_scheduler as L
+from sunwai.jobs.scheduler import store
 
 CH = [(0, 0.0, 18.05), (1, 18.05, 24.2), (2, 42.25, 37.5), (3, 79.75, 37.25), (4, 117.0, 63.0)]
 
@@ -37,7 +38,7 @@ def mkjob(tmp, langs=("hi",), voice_plan=None, planner=True, done=(), segs=None,
 @pytest.fixture(autouse=True)
 def on(monkeypatch):
     monkeypatch.setenv("DUB_ADD_LANG", "1")
-    L._INFLIGHT.clear()
+    L.SCHEDULER.inflight.clear()
 
 
 H = lambda **k: L.Hooks(target_codes=lambda: {"hi", "ta", "bn", "te", "en"}, **k)
@@ -150,7 +151,7 @@ def test_focus_adapter_waits_for_watching_runway(tmp_path):
     h = H(set_focus=lambda *a: calls.append(a))
     r = L.request_track(j, "ta", 70000, 1, watching_lang="hi", hooks=h)   # runway [2,3]; hi chunk3 not done
     assert not r["focus"]["applied"] and not calls
-    L._INFLIGHT.clear()
+    L.SCHEDULER.inflight.clear()
     j2 = mkjob(tmp_path / "x" if (tmp_path / "x").mkdir() is None else tmp_path, langs=("hi",), done=[("hi", 2), ("hi", 3)])
     r = L.request_track(j2, "ta", 70000, 1, watching_lang="hi", hooks=h)
     assert r["focus"]["applied"] and calls == [("aaaaaaaaaaaa", "ta", 2)]
@@ -283,7 +284,7 @@ def test_validation_before_mutation(tmp_path):
     for lang in ("bn", "zz", "T"):
         with pytest.raises(L.LangSchedError):
             L.request_track(j, lang, 0, 1, hooks=H())
-    assert snap(j) == b and not (j / "tracks.json").exists() and not L._INFLIGHT
+    assert snap(j) == b and not (j / "tracks.json").exists() and not L.SCHEDULER.inflight
 
 
 def test_ensure_running_failure_rolls_back(tmp_path):
@@ -293,7 +294,7 @@ def test_ensure_running_failure_rolls_back(tmp_path):
         L.request_track(j, "ta", 0, 1, hooks=H(ensure_running=boom))
     assert e.value.status == 502 and e.value.code == "schedule_failed" and "queue full" in e.value.message
     assert snap(j) == b                                         # job.json bytes and dirs restored
-    assert not (j / "tracks.json").exists() and not L._INFLIGHT
+    assert not (j / "tracks.json").exists() and not L.SCHEDULER.inflight
     assert L.request_track(j, "ta", 0, 1, hooks=H())["created"]  # and a retry works
 
 
@@ -329,7 +330,7 @@ def test_lipsync_hash_honesty(tmp_path):
 
 # ---- review r2: tracks.json inside the commit; contract enum ----
 def _fail_tracks(monkeypatch, nth=1):
-    real = L._atomic_json
+    real = store.atomic_json
     n = {"c": 0}
     def f(p, obj):
         if Path(p).name == "tracks.json":
@@ -337,12 +338,12 @@ def _fail_tracks(monkeypatch, nth=1):
             if n["c"] >= nth:
                 raise OSError("ENOSPC")
         return real(p, obj)
-    monkeypatch.setattr(L, "_atomic_json", f)
+    monkeypatch.setattr(store, "atomic_json", f)
 
 
 def test_tracks_write_failure_after_schedule_records_reconcile(tmp_path, monkeypatch):
     j = mkjob(tmp_path); ran = []
-    real = L._atomic_json
+    real = store.atomic_json
     _fail_tracks(monkeypatch, nth=2)               # intent write ok, COMMIT write fails
     r = L.request_track(j, "ta", 0, 1, hooks=H(ensure_running=lambda x: ran.append(x)))
     assert ran and r["reconcile"] and "ENOSPC" in r["reconcile"]["reason"]
@@ -350,7 +351,7 @@ def test_tracks_write_failure_after_schedule_records_reconcile(tmp_path, monkeyp
     assert json.loads((j / "tracks.json").read_text())["tracks"]["ta"]["phase"] == "scheduling"   # durable intent
     rd = L.track_readiness(j, "ta")
     assert rd["reconcile"] and rd["audio_state"] in ("preparing", "partial", "ready", "error", "absent")
-    monkeypatch.setattr(L, "_atomic_json", real)                                 # disk recovers; retry reconciles
+    monkeypatch.setattr(store, "atomic_json", real)                                 # disk recovers; retry reconciles
     r2 = L.request_track(j, "ta", 0, 1, hooks=H(ensure_running=lambda x: ran.append(x)))
     assert r2["reconcile"] is None and L.track_readiness(j, "ta")["reconcile"] is None
     assert json.loads((j / "tracks.json").read_text())["tracks"]["ta"]["phase"] == "scheduled"
