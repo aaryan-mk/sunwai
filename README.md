@@ -4,8 +4,7 @@ Dub a video into Indian languages while you watch it.
 
 SunwAI takes a YouTube link and up to three target Indian languages and produces a dubbed video: a separate voice for each speaker, speech timed to fit the original, the background music kept, and lip sync applied to whoever is actually speaking. You can switch the audio language during playback, add a language mid-watch, and edit individual lines.
 
-<!-- TODO: replace with a real recording. Suggested path: docs/media/demo.gif -->
-![SunwAI demo (placeholder)](docs/media/demo.gif)
+![SunwAI landing page](docs/media/landing.png)
 
 ## Key features
 
@@ -44,17 +43,31 @@ flowchart LR
 
 See [docs/architecture.md](docs/architecture.md) for components, state machines and the stage interface.
 
-## Requirements
+## What you need
 
-- Python 3.10 or newer
-- `ffmpeg` and `ffprobe` on `PATH`
-- Deno (JavaScript runtime used by yt-dlp for some sites)
-- A **Bodhan API key** (or self-hosted Bodhan-compatible ASR/MT/TTS services with `BODHAN_MODE=local`)
-- An **OpenRouter API key** (or a Gemini key with `LLM_PROVIDER=gemini`)
-- For lip sync: an NVIDIA GPU with roughly 30 GB of memory, CUDA drivers, and the LatentSync weights
-- A Hugging Face account and token (pyannote weights are gated)
+| Component | What it needs | Notes |
+|---|---|---|
+| Lip sync | The open-source [LatentSync 1.6](https://github.com/bytedance/LatentSync) (ByteDance, Apache-2.0). Weights come from Hugging Face via `scripts/download_models.py`. | NVIDIA GPU with about 30 GB of memory at default settings. To fit a smaller card, lower the active-speaker batch size (`SUNWAI_LIPSYNC__ASD_BS` / `LIP_ASD_BS`) and cap per-process memory (`SUNWAI_LIPSYNC__GPU_FRAC` / `LIP_GPU_FRAC`). On a machine without a suitable GPU, run with lip sync off (below). |
+| ASR, MT, TTS | A Bodhan API key with `BODHAN_MODE=api`, or any compatible self-hosted endpoints with `BODHAN_MODE=local` and the `*_BASE` URLs set. | See `.env.example` for the base-URL variables. |
+| LLM (line fitting, chat) | An OpenRouter key (`SUNWAI_LLM__OPENROUTER_API_KEY`), or a Gemini key with `LLM_PROVIDER=gemini`. | |
+| Speaker models | pyannote weights are gated: accept the model terms on Hugging Face and set `HF_TOKEN` (`SUNWAI_PLANNING__HF_TOKEN`). | Needed once to download. |
+| Downloading videos | Python 3.10+, `ffmpeg` and `ffprobe` on `PATH`. | Some YouTube videos also need a cookies file (`YTDLP_COOKIES`, mode 600) and a Deno runtime for yt-dlp. |
 
-The API server, the planner and most of the pipeline run on CPU plus remote services. Only lip sync (and optionally local mirrors) need a GPU.
+The API server, the planner and most of the pipeline run on CPU plus remote services. Only lip sync (and the optional local mirrors) need a GPU.
+
+### CPU-only quick start (no lip sync)
+
+```bash
+git clone https://github.com/aaryan-mk/sunwai.git && cd sunwai
+uv sync --extra server --extra pipeline     # no lipsync extra, no GPU needed
+cp .env.example .env
+# edit .env: set SUNWAI_BODHAN__API_KEY, SUNWAI_LLM__OPENROUTER_API_KEY, SUNWAI_PLANNING__HF_TOKEN
+echo "SUNWAI_LIPSYNC__MODE=none" >> .env    # disable lip-sync dispatch globally
+uv run sunwai config show                   # check the effective settings (secrets redacted)
+uv run sunwai serve --host 127.0.0.1 --port 8000
+```
+
+Open <http://127.0.0.1:8000>, untick **Lip sync** and dub (the global `LIPSYNC__MODE=none` overrides job requests anyway). You get aligned dubbed audio over the original picture. To add lip sync later, see [Installation](#installation) and [Model weights](#model-weights).
 
 ## Quick start
 
@@ -131,6 +144,66 @@ Settings are typed and grouped. Canonical names are `SUNWAI_<GROUP>__<FIELD>`; t
 | `SUNWAI_CONTROL__TOKEN` / `DUB_CTL_TOKEN` | Control-plane token; control refuses to start without authentication |
 
 A job's own `lipsync=false` is always honoured, and a global lip-sync disable overrides job requests.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Landing](docs/media/landing.png) | ![Pasting a link](docs/media/form.png) |
+| Landing page: paste a link, pick languages, choose lip sync | Link pasted, ready to dub |
+| ![Player](docs/media/player.png) | ![Mobile](docs/media/mobile-form.png) |
+| Player with per-language transcript and lip-sync status | The same form on a phone |
+
+The audio and subtitle menu, where you switch the dubbed language while the video plays:
+
+![Audio and subtitle menu](docs/media/audio-menu.png)
+
+## Using SunwAI
+
+### Web UI
+
+1. Start the server (`uv run sunwai serve`) and open <http://127.0.0.1:8000>.
+2. Paste a video link.
+3. Open **Choose up to 3 languages** and pick your targets. The limit comes from `SUNWAI_SERVER__MAX_TARGETS` / `DUB_MAX_TARGETS`.
+4. Choose **Entire video** or **Clip**, tick **I have the rights**, and decide whether **Lip sync** is on.
+5. Press **Dub it**. The player opens as soon as the first chunk is ready; later chunks arrive while you watch.
+6. Switch the audio language at any time from the audio menu or the **Listen in** tabs (press `L`). A language that is still rendering shows a spinner.
+7. Edit lines: in the transcript, use the pencil on a line to change its text and re-synthesise it. With live controls enabled, expression buttons such as **Angrier** and **Calmer** re-render a line with a different delivery.
+8. Chat: press `Ctrl+K` (or `Cmd+K`) in the studio view and type, for example, "make line 2 angrier". The assistant proposes a change, you preview it, then **Apply**. **Undo** reverts it.
+9. Add a language mid-watch from the language controls; its chunks are scheduled around where you are watching.
+
+Live controls (actions, chat, expression, add-language) are off unless you set `SUNWAI_CONTROL__ACTIONS=true`; they require a control token (`SUNWAI_CONTROL__TOKEN` / `DUB_CTL_TOKEN`, or a generated mode-600 token file).
+
+### HTTP API
+
+Language codes come from `GET /api/languages` (for example `hi`, `ta`, `bn`).
+
+```bash
+BASE=http://127.0.0.1:8000
+
+# Create a job (idempotent: the id is derived from url, start and dur)
+curl -s -X POST $BASE/api/jobs -H 'content-type: application/json' \
+  -d '{"url":"https://www.youtube.com/watch?v=VIDEO_ID","langs":["hi","ta"],"start":0,"dur":0,"lipsync":false}'
+# -> {"job_id":"...","langs":["hi","ta"],"mode":"running","state":"...", ...}
+
+# Poll status (per-language progress under "langs", plus "chunks" and "state")
+curl -s $BASE/api/jobs/$JOB_ID
+
+# Tell the scheduler what you are watching (drives priority)
+curl -s -X POST $BASE/api/jobs/$JOB_ID/focus -H 'content-type: application/json' -d '{"lang":"hi","chunk":0}'
+
+# Fetch media: the original and a dubbed chunk (HTTP Range supported)
+curl -s -o original0.mp4 $BASE/media/$JOB_ID/original/0.mp4
+curl -s -o hi0.mp4       $BASE/media/$JOB_ID/hi/chunks/0.mp4
+
+# List transcript lines, then edit one and undo it
+curl -s $BASE/api/jobs/$JOB_ID/hi/segments
+curl -s -X POST $BASE/api/jobs/$JOB_ID/hi/chunks/0/segments/$SEG_ID \
+  -H 'content-type: application/json' -d '{"text":"नमस्ते, आपका स्वागत है"}'
+curl -s -X POST $BASE/api/jobs/$JOB_ID/hi/chunks/0/segments/$SEG_ID/undo
+```
+
+An edit returns `{"ok":true,"version":N,"segment":{...}}`; the chunk is re-synthesised and `version` changes when its media does. Health is at `GET /health`. The interactive OpenAPI docs are served by FastAPI at `/docs`.
 
 ## Running
 
